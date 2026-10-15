@@ -1,0 +1,1004 @@
+--[[
+	BossBrawl  -  Sagat vs Zenithega
+	LocalScript / executor script for "I Wanna Test The Game".
+
+	What it does
+	  * Turn the toggle ON, equip the Third Eye, walk into the Stage 6 trigger as usual.
+	  * Once Zenithega's intro is over, a real Sagat drops into the SAME 2D arena.
+	  * Sagat ignores you completely and treats Zenithega as his target.
+	    He uses his own attacks: Tiger Shots, Omega Shots, Sanic lobs, Tiger Uppercut.
+	  * Zenithega keeps her normal attacks. Whenever one of her attacks lands on Sagat
+	    he takes ZenithegaDamage (default 10). Whenever Sagat lands a hit on her she
+	    takes SagatDamage (default 1000) through her real TakeDamage() - so her health
+	    bar, phase changes and death all work normally.
+	  * Sagat has his own health bar. All numbers are editable in the panel.
+
+	Notes
+	  * Everything is client side, like the game's own boss code.
+	  * Zenithega's native attacks are detected by overlap with her attack objects
+	    (projectiles / spikes / swords / slashes / waves). Her shockwaves hit Sagat once
+	    each when the ring reaches him, exactly like the original distance check.
+	  * Sagat's Tiger Shot Cannon is left out on purpose.
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
+local Debris = game:GetService("Debris")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LP = Players.LocalPlayer
+local PlayerGui = LP:WaitForChild("PlayerGui")
+
+-- re-running the script cleanly replaces the old copy
+if _G.BossBrawl and type(_G.BossBrawl.Destroy) == "function" then
+	pcall(_G.BossBrawl.Destroy)
+end
+
+--// Config (also editable from the panel)
+local CFG = {
+	SagatMaxHealth = 12000,
+	SagatDamage = 1000,      -- Sagat  -> Zenithega, per hit
+	ZenithegaDamage = 10,    -- Zenithega -> Sagat, per hit
+	WalkSpeed = 25,
+	Gravity = 150,
+	HitCooldown = 0.5,       -- same Zenithega attack object can hurt Sagat once per this many seconds
+}
+
+local SOUND = {
+	TIGER = 12291551415,
+	SANIC = 12291552718,
+	LAUGH = 12291929883,
+	DAMAGED = 16519711409,
+	UPPERCUT = 12368217849,
+	KO = 12291551198,
+	OMEGA = 15741599330,
+}
+
+local SPRITES = {
+	"sagat_idle_1", "sagat_walk_1", "sagat_damaged_1", "sagat_laugh_1", "sagat_fall_1",
+	"sagat_jump_1", "sagat_tiger_1", "sagat_sanic_shot_1", "sagat_tiger_uppercut_1",
+	"sagat_knee_attack_1", "sagat_defeated_1",
+}
+
+local BASE_FPS = 6.666666666
+
+local POSE = {
+	Idle     = { sig = "sagat_idle_1",           loop = true,  fps = 6.67 },
+	Walk     = { sig = "sagat_walk_1",           loop = true,  fps = 10 },
+	Damaged  = { sig = "sagat_damaged_1",        loop = false, fps = 10 },
+	Laugh    = { sig = "sagat_laugh_1",          loop = true,  fps = 6.67 },
+	Fall     = { sig = "sagat_fall_1",           loop = true,  fps = 6.67 },
+	Jump     = { sig = "sagat_jump_1",           loop = true,  fps = 6.67 },
+	Tiger    = { sig = "sagat_tiger_1",          loop = false, fps = 9 },
+	Sanic    = { sig = "sagat_sanic_shot_1",     loop = false, fps = 8 },
+	Uppercut = { sig = "sagat_tiger_uppercut_1", loop = false, fps = 8,
+		ft = { [1] = BASE_FPS / 1.8, [3] = BASE_FPS / 2 } },
+	Death    = { sig = "sagat_defeated_1",       loop = false, fps = 6.67,
+		ft = { [1] = BASE_FPS / 8, [2] = BASE_FPS, [3] = BASE_FPS / 9, [4] = BASE_FPS / 6 } },
+}
+
+local PROJECTILE = {
+	Tiger = { template = "TigerShot", frames = { "rbxassetid://12303472690", "rbxassetid://12303473103" } },
+	Omega = { template = "OmegaShot" },
+	Sanic = { template = "SanicShot", spin = 12 },
+}
+
+-- names of Zenithega attack objects (lower case, substring match) that can hurt Sagat
+local ATTACK_KEYWORDS = {
+	"cherry", "fruit", "spike", "sword", "projectile", "blackhole", "flamepillar",
+	"hitbox", "zundamon", "slash", "wrath", "lazer", "laser", "beam", "zangeif",
+}
+
+local function playSound(id, volume)
+	local s = Instance.new("Sound")
+	s.SoundId = "rbxassetid://" .. tostring(id)
+	s.Volume = volume or 1
+	s.Parent = SoundService
+	s:Play()
+	Debris:AddItem(s, 6)
+end
+
+--// Game access
+local function getZenithegaModule()
+	local ps = LP:FindFirstChild("PlayerScripts")
+	local bosses = ps and ps:FindFirstChild("Bosses")
+	local init = bosses and bosses:FindFirstChild("InitializeBosses")
+	return init and init:FindFirstChild("Zenithega")
+end
+
+local function getBoss()
+	local module = getZenithegaModule()
+	if not module then return nil end
+	local ok, result = pcall(require, module)
+	if ok and type(result) == "table" then
+		return result, module
+	end
+	return nil
+end
+
+local ZenithegaClass
+local function getZenithegaClass()
+	if not ZenithegaClass then
+		ZenithegaClass = require(ReplicatedStorage.ClientContainer.MiscModule.ZenithegaClass)
+	end
+	return ZenithegaClass
+end
+
+-- Is a Zenithega fight running right now (intro done)?
+local function fightIsRunning(boss, needEye)
+	if not boss then return false end
+	if needEye and not _G.EvilEye then return false end
+	local zone = boss.zenithega_zone
+	local part = boss.Zenithega
+	return shared.inBattle == true
+		and zone ~= nil and zone.Parent ~= nil
+		and part ~= nil and part.Parent ~= nil and part.Parent.Name == "BossFight"
+		and boss.IntroFinished == true
+end
+
+--// Brawl session
+local Session = nil
+local Starting = false
+local Enabled = false
+local setStatus = function() end
+
+local function endSession()
+	local S = Session
+	if not S then return end
+	Session = nil
+	S.alive = false
+	for _, c in ipairs(S.conns) do
+		pcall(function() c:Disconnect() end)
+	end
+	if S.thread then
+		pcall(task.cancel, S.thread)
+	end
+	if S.anim then
+		pcall(function() S.anim:Stop() end)
+		pcall(function() S.anim:Destroy() end)
+	end
+	if S.fx then pcall(function() S.fx:Destroy() end) end
+	if S.hud then pcall(function() S.hud:Destroy() end) end
+	setStatus(Enabled and "Armed - waiting for the Zenithega fight" or "Off")
+end
+
+local function createSession(boss, module, debugMode)
+	local zone = boss.zenithega_zone
+	local zenPart = boss.Zenithega
+	local objects = module:FindFirstChild("Objects")
+	if not (zone and zenPart and objects and objects:FindFirstChild("Sagat")) then
+		return nil, "Missing arena / Sagat assets"
+	end
+
+	local ZC = getZenithegaClass()
+	local S = {
+		alive = true, dead = false, busy = false, debug = debugMode or false,
+		boss = boss, conns = {}, projectiles = {},
+		hitAt = setmetatable({}, { __mode = "k" }),
+		waveHit = setmetatable({}, { __mode = "k" }),
+		vy = 0, vz = 0, pose = nil, faceLeft = false, lastHurtSound = 0, debugHits = 0,
+	}
+
+	--// arena numbers
+	local spawnPart = zone:FindFirstChild("ZenithegaSpawn")
+	local left, right = zone:FindFirstChild("Left"), zone:FindFirstChild("Right")
+	local floorPart = zone:FindFirstChild("floor_maphitbox")
+	S.planeX = (spawnPart or zenPart).Position.X
+	S.minZ = (left and left.Position.Z or zenPart.Position.Z - 70) + 4
+	S.maxZ = (right and right.Position.Z or zenPart.Position.Z + 70) - 4
+	if floorPart then
+		S.groundY = floorPart.Position.Y + floorPart.Size.Y / 2 + 4.75
+	else
+		S.groundY = spawnPart and spawnPart.Position.Y or -4.3
+	end
+	S.y = S.groundY + 45
+	S.z = S.minZ + 18
+	S.objects = objects
+	S.maxHp = CFG.SagatMaxHealth
+	S.hp = S.maxHp
+
+	if debugMode then
+		S.fakeTarget = Vector3.new(S.planeX, S.groundY + 16, (S.minZ + S.maxZ) / 2 + 20)
+	end
+
+	--// containers
+	S.fx = Instance.new("Folder")
+	S.fx.Name = "BossBrawlFX"
+	S.fx.Parent = workspace
+
+	--// Sagat sprite part
+	local part = objects.Sagat:Clone()
+	part.Name = "BrawlSagat"
+	for _, child in ipairs(part:GetChildren()) do
+		if child:IsA("Sound") then child:Destroy() end
+	end
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.CFrame = CFrame.new(S.planeX - 2, S.y, S.z) * CFrame.Angles(0, math.pi / 2, 0)
+	part.Parent = S.fx
+	S.part = part
+
+	local label = part.SurfaceGui.ImageLabel
+	label.Visible = true
+	label.ImageTransparency = 0
+	label.ImageColor3 = Color3.new(1, 1, 1)
+	S.label = label
+
+	local anim = ZC.Animator.New({
+		Signature = "BossBrawlSagat_" .. tostring(math.floor(os.clock() * 1000)),
+		FPS = BASE_FPS,
+		Parent = label,
+		Size = Vector2.new(192, 148),
+	})
+	S.anim = anim
+
+	for _, name in ipairs(SPRITES) do
+		pcall(function()
+			anim:LoadBufferFromBaked({ AnimationSignature = name, Type = "Sprites" })
+		end)
+	end
+
+	local loadStart = os.clock()
+	repeat
+		local ready = true
+		for _, name in ipairs(SPRITES) do
+			local store = anim.Storages.Sprites[name]
+			if not store or #store == 0 then ready = false break end
+		end
+		if ready then break end
+		task.wait(0.1)
+	until os.clock() - loadStart > 20 or not S.alive
+
+	--// helpers
+	local function setPose(name, force)
+		local def = POSE[name]
+		if not def then return end
+		if S.pose == name and not force then return end
+		S.pose = name
+		pcall(function()
+			anim:Stop()
+			anim:Play({
+				AnimationSignature = def.sig, Type = "Sprites",
+				Once = not def.loop, FPS = def.fps, FrameTime = def.ft,
+			})
+		end)
+	end
+
+	local function stopped()
+		return (not S.alive) or S.dead
+	end
+
+	local function sleep(t)
+		local t0 = os.clock()
+		while os.clock() - t0 < t do
+			if stopped() then return false end
+			task.wait()
+		end
+		return not stopped()
+	end
+
+	local function zenPos()
+		if S.fakeTarget then return S.fakeTarget.Y, S.fakeTarget.Z end
+		local p = zenPart.Position
+		return p.Y, p.Z
+	end
+
+	local function zenTangible()
+		if S.fakeTarget then return true end
+		local sg = zenPart:FindFirstChild("SurfaceGui")
+		local il = sg and sg:FindFirstChild("ImageLabel")
+		return (not il) or il.ImageTransparency < 0.9
+	end
+
+	local function faceTarget()
+		local _, tz = zenPos()
+		S.faceLeft = tz < S.z
+	end
+
+	local function dirSign()
+		return S.faceLeft and -1 or 1
+	end
+
+	--// HUD
+	local hud = Instance.new("ScreenGui")
+	hud.Name = "BossBrawlHUD"
+	hud.ResetOnSpawn = false
+	hud.DisplayOrder = 20
+	hud.Parent = PlayerGui
+	S.hud = hud
+
+	local holder = Instance.new("Frame")
+	holder.AnchorPoint = Vector2.new(0.5, 0)
+	holder.Position = UDim2.new(0.5, 0, 0, 72)
+	holder.Size = UDim2.new(0, 360, 0, 28)
+	holder.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
+	holder.BackgroundTransparency = 0.1
+	holder.BorderSizePixel = 0
+	holder.Parent = hud
+	Instance.new("UICorner", holder).CornerRadius = UDim.new(0, 8)
+
+	local holderStroke = Instance.new("UIStroke", holder)
+	holderStroke.Color = Color3.fromRGB(255, 140, 60)
+	holderStroke.Transparency = 0.4
+
+	local track = Instance.new("Frame")
+	track.Size = UDim2.new(1, -8, 1, -8)
+	track.Position = UDim2.new(0, 4, 0, 4)
+	track.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+	track.BorderSizePixel = 0
+	track.Parent = holder
+	Instance.new("UICorner", track).CornerRadius = UDim.new(0, 5)
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new(1, 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(255, 120, 40)
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+	Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 5)
+
+	local hudText = Instance.new("TextLabel")
+	hudText.Size = UDim2.new(1, 0, 1, 0)
+	hudText.BackgroundTransparency = 1
+	hudText.TextColor3 = Color3.new(1, 1, 1)
+	hudText.Font = Enum.Font.GothamBold
+	hudText.TextSize = 13
+	hudText.ZIndex = 3
+	hudText.Parent = track
+
+	local function updateHud()
+		fill.Size = UDim2.new(math.clamp(S.hp / S.maxHp, 0, 1), 0, 1, 0)
+		hudText.Text = string.format("SAGAT   %d / %d", math.ceil(S.hp), S.maxHp)
+	end
+	updateHud()
+	S.updateHud = updateHud
+
+	--// damage in both directions
+	local function flash()
+		label.ImageColor3 = Color3.fromRGB(255, 110, 110)
+		TweenService:Create(label, TweenInfo.new(0.2), { ImageColor3 = Color3.new(1, 1, 1) }):Play()
+	end
+
+	local function die()
+		S.dead = true
+		S.vz = 0
+		S.busy = false
+		setPose("Death", true)
+		playSound(SOUND.KO, 1.2)
+		hudText.Text = "SAGAT DEFEATED"
+		task.delay(3.5, function()
+			if S.alive then
+				TweenService:Create(label, TweenInfo.new(1.5), { ImageTransparency = 1 }):Play()
+			end
+		end)
+	end
+
+	local function hurtSagat(dmg)
+		if S.dead or not S.alive then return end
+		S.hp = math.max(0, S.hp - dmg)
+		updateHud()
+		flash()
+		if os.clock() - S.lastHurtSound > 0.2 then
+			S.lastHurtSound = os.clock()
+			playSound(SOUND.DAMAGED, 0.5)
+		end
+		if S.hp <= 0 then
+			die()
+		elseif not S.busy and S.grounded then
+			setPose("Damaged", true)
+		end
+	end
+	S.hurtSagat = hurtSagat
+
+	local function damageZenithega(dmg)
+		if S.debug then
+			S.debugHits = S.debugHits + 1
+			return true
+		end
+		if boss.Dead or boss.CannotTakeDamage then return false end
+		local multiplier = boss.DamageMultiplier
+		if not multiplier or multiplier == 0 then multiplier = 1 end
+		-- keep the player's combo counter out of this
+		local combo = boss.hitCombo
+		boss.hitCombo = nil
+		local ok = pcall(boss.TakeDamage, boss, dmg / multiplier, nil, nil, nil, true)
+		boss.hitCombo = combo
+		return ok
+	end
+
+	--// projectiles
+	local function spawnProjectile(kind, y, z, vy, vz, life, gravity)
+		local def = PROJECTILE[kind]
+		local template = objects:FindFirstChild(def.template)
+		if not template then return nil end
+		local p = template:Clone()
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanTouch = false
+		p.CanQuery = false
+		p.CastShadow = false
+		p.Parent = S.fx
+		local sg = p:FindFirstChildOfClass("SurfaceGui")
+		local proj = {
+			part = p, label = sg and sg:FindFirstChildWhichIsA("ImageLabel"), kind = kind,
+			y = y, z = z, vy = vy, vz = vz, g = gravity or 0,
+			born = os.clock(), life = life, rot = 0, frame = 1, frameAt = os.clock(),
+			spin = def.spin and def.spin * (vz >= 0 and 1 or -1) or nil,
+		}
+		S.projectiles[#S.projectiles + 1] = proj
+		return proj
+	end
+
+	local function explode(proj)
+		proj.dead = true
+		if proj.label then
+			TweenService:Create(proj.label, TweenInfo.new(0.18), {
+				ImageTransparency = 1, Size = UDim2.fromScale(1.8, 1.8),
+			}):Play()
+		end
+		Debris:AddItem(proj.part, 0.25)
+	end
+
+	local function updateProjectiles(dt)
+		local zy, zz = zenPos()
+		local tangible = zenTangible()
+		for i = #S.projectiles, 1, -1 do
+			local p = S.projectiles[i]
+			if p.dead or not p.part.Parent then
+				table.remove(S.projectiles, i)
+			else
+				p.vy = p.vy - p.g * dt
+				p.y = p.y + p.vy * dt
+				p.z = p.z + p.vz * dt
+				local angle
+				if p.spin then
+					p.rot = p.rot + p.spin * dt
+					angle = p.rot
+				else
+					angle = math.atan2(p.vy, -p.vz)
+				end
+				p.part.CFrame = CFrame.new(S.planeX - 1.5, p.y, p.z) * CFrame.Angles(angle, 0, 0)
+				if p.kind == "Tiger" and p.label and os.clock() - p.frameAt >= 0.1 then
+					p.frameAt = os.clock()
+					p.frame = p.frame % 2 + 1
+					p.label.Image = PROJECTILE.Tiger.frames[p.frame]
+				end
+				if tangible and math.abs(p.y - zy) < 6.2 and math.abs(p.z - zz) < 4.2 then
+					damageZenithega(CFG.SagatDamage)
+					explode(p)
+					table.remove(S.projectiles, i)
+				elseif os.clock() - p.born > p.life or p.y < S.groundY - 8 then
+					explode(p)
+					table.remove(S.projectiles, i)
+				end
+			end
+		end
+	end
+
+	--// Zenithega -> Sagat hit detection (her normal attacks)
+	local overlap = OverlapParams.new()
+	overlap.FilterType = Enum.RaycastFilterType.Include
+
+	local function isAttackObject(top, part)
+		if top:GetAttribute("ZProjectile") or part:GetAttribute("ZProjectile") then
+			return true
+		end
+		local name = string.lower(top.Name)
+		for _, key in ipairs(ATTACK_KEYWORDS) do
+			if string.find(name, key, 1, true) then return true end
+		end
+		return false
+	end
+
+	local function scanZenithegaAttacks()
+		if S.dead then return end
+		local tempPart = workspace:FindFirstChild("TempPart")
+		if not tempPart then return end
+		local now = os.clock()
+
+		-- shockwave rings: hit once when the ring edge reaches Sagat
+		for _, child in ipairs(tempPart:GetChildren()) do
+			if child.Name == "Wave" and not S.waveHit[child] then
+				local pp = child:IsA("Model") and child.PrimaryPart or (child:IsA("BasePart") and child) or nil
+				if pp then
+					local dy, dz = S.y - pp.Position.Y, S.z - pp.Position.Z
+					local dist = math.sqrt(dy * dy + dz * dz) - pp.Size.X * 0.5
+					if dist < 0.5 then
+						S.waveHit[child] = true
+						hurtSagat(CFG.ZenithegaDamage)
+					end
+				end
+			end
+		end
+
+		-- projectiles / spikes / slashes / swords ...
+		overlap.FilterDescendantsInstances = { tempPart }
+		local parts = workspace:GetPartBoundsInBox(
+			CFrame.new(S.planeX, S.y, S.z), Vector3.new(80, 9, 4.5), overlap)
+		for _, part in ipairs(parts) do
+			local top = part
+			while top.Parent and top.Parent ~= tempPart do
+				top = top.Parent
+			end
+			if top.Parent == tempPart and top.Name ~= "Wave" and isAttackObject(top, part) then
+				if now - (S.hitAt[top] or 0) >= CFG.HitCooldown then
+					S.hitAt[top] = now
+					hurtSagat(CFG.ZenithegaDamage)
+					if S.dead then return end
+				end
+			end
+		end
+	end
+
+	--// Sagat attacks (his own moves, aimed at Zenithega)
+	local function aimAt(fromY, fromZ)
+		local ty, tz = zenPos()
+		local dy, dz = ty - fromY, tz - fromZ
+		local len = math.max(math.sqrt(dy * dy + dz * dz), 0.001)
+		return dy / len, dz / len, len
+	end
+
+	local function attackTigerShot()
+		faceTarget()
+		S.vz = 0
+		setPose("Tiger", true)
+		playSound(SOUND.TIGER)
+		if not sleep(0.45) then return end
+		for _ = 1, 14 do
+			if stopped() then return end
+			faceTarget()
+			local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+			local dy, dz, dist = aimAt(sy, sz)
+			local angle = math.atan2(dy, dz) + math.rad(math.random(-14, 14))
+			local speed = 42
+			spawnProjectile("Tiger", sy, sz, math.sin(angle) * speed, math.cos(angle) * speed,
+				math.min(dist / speed + 1.5, 5), 0)
+			playSound(SOUND.TIGER, 0.6)
+			if not sleep(0.2) then return end
+		end
+		setPose("Idle")
+	end
+
+	local function attackOmegaShot()
+		faceTarget()
+		S.vz = 0
+		setPose("Sanic", true)
+		playSound(SOUND.OMEGA, 1.5)
+		if not sleep(0.4) then return end
+		for _ = 1, 8 do
+			if stopped() then return end
+			faceTarget()
+			local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+			local dy, dz, dist = aimAt(sy, sz)
+			local speed = 38
+			spawnProjectile("Omega", sy, sz, dy * speed, dz * speed, math.min(dist / speed + 1.5, 5), 0)
+			if not sleep(0.45) then return end
+		end
+		setPose("Idle")
+	end
+
+	local function attackSanic()
+		faceTarget()
+		S.vz = 0
+		setPose("Sanic", true)
+		if not sleep(0.35) then return end
+		for _ = 1, 3 do
+			if stopped() then return end
+			faceTarget()
+			local sy, sz = S.y + 1, S.z + dirSign() * 4
+			local ty, tz = zenPos()
+			local g = 110
+			local travel = math.clamp(math.abs(tz - sz) / 45, 0.5, 1.6)
+			local vz = (tz - sz) / travel
+			local vy = (ty - sy + 0.5 * g * travel * travel) / travel
+			playSound(SOUND.SANIC, 0.8)
+			spawnProjectile("Sanic", sy, sz, vy, vz, travel + 1.2, g)
+			if not sleep(0.5) then return end
+		end
+		setPose("Idle")
+	end
+
+	local function attackUppercut()
+		faceTarget()
+		-- dash in
+		setPose("Walk")
+		local t0 = os.clock()
+		while os.clock() - t0 < 0.35 and not stopped() do
+			local _, tz = zenPos()
+			if math.abs(tz - S.z) < 7 then break end
+			S.vz = (tz > S.z and 1 or -1) * 60
+			task.wait()
+		end
+		S.vz = 0
+		if stopped() then return end
+		faceTarget()
+		setPose("Uppercut", true)
+		playSound(SOUND.UPPERCUT)
+		S.vy = 75
+		local hitDone = false
+		local riseStart = os.clock()
+		while not stopped() and (S.vy > 0 or os.clock() - riseStart < 0.25) and os.clock() - riseStart < 1.2 do
+			local zy, zz = zenPos()
+			if not hitDone and zenTangible()
+				and math.abs(zz - (S.z + dirSign() * 3)) < 8
+				and math.abs(zy - (S.y + 3)) < 11 then
+				hitDone = true
+				damageZenithega(CFG.SagatDamage)
+			end
+			task.wait()
+		end
+		local fallStart = os.clock()
+		while not stopped() and not S.grounded and os.clock() - fallStart < 2 do
+			task.wait()
+		end
+		setPose("Idle")
+	end
+
+	local function walkTo(targetDist, maxTime)
+		setPose("Walk")
+		local t0 = os.clock()
+		while os.clock() - t0 < maxTime and not stopped() do
+			local _, tz = zenPos()
+			local dz = tz - S.z
+			local d = math.abs(dz)
+			faceTarget()
+			if d > targetDist + 6 then
+				S.vz = (dz > 0 and 1 or -1) * CFG.WalkSpeed
+			elseif d < targetDist - 6 then
+				S.vz = (dz > 0 and -1 or 1) * CFG.WalkSpeed
+			else
+				break
+			end
+			task.wait()
+		end
+		S.vz = 0
+		setPose("Idle")
+	end
+
+	local function runAttack(fn)
+		S.busy = true
+		fn()
+		S.busy = false
+		S.vz = 0
+	end
+
+	--// frame update
+	local function physics(dt)
+		if S.vy ~= 0 or S.y > S.groundY + 0.01 then
+			S.vy = S.vy - CFG.Gravity * dt
+			S.y = S.y + S.vy * dt
+			if S.y <= S.groundY then
+				S.y = S.groundY
+				S.vy = 0
+			end
+		end
+		S.grounded = S.y <= S.groundY + 0.02
+		S.z = math.clamp(S.z + S.vz * dt, S.minZ, S.maxZ)
+	end
+
+	local scanTimer = 0
+	S.conns[#S.conns + 1] = RunService.RenderStepped:Connect(function(dt)
+		if not S.alive then return end
+		physics(dt)
+		part.CFrame = CFrame.new(S.planeX - 2, S.y, S.z) * CFrame.Angles(0, math.pi / 2, 0)
+		pcall(anim.Flip, anim, S.faceLeft)
+		updateProjectiles(dt)
+		scanTimer = scanTimer + dt
+		if scanTimer >= 0.05 then
+			scanTimer = 0
+			scanZenithegaAttacks()
+		end
+	end)
+
+	--// brain
+	S.thread = task.spawn(function()
+		local ok, err = pcall(function()
+			-- entrance: drop in from above
+			setPose("Fall", true)
+			faceTarget()
+			repeat task.wait() until S.grounded or not S.alive
+			if not S.alive then return end
+			setPose("Idle", true)
+			playSound(SOUND.LAUGH, 0.8)
+			sleep(0.8)
+
+			while not stopped() do
+				if boss.Dead then
+					S.vz = 0
+					setPose("Laugh")
+					sleep(0.5)
+				else
+					faceTarget()
+					local ty, tz = zenPos()
+					local dz, dy = math.abs(tz - S.z), ty - S.y
+					if dz < 16 and dy < 20 and math.random() < 0.55 then
+						runAttack(attackUppercut)
+					else
+						if dz > 55 or dz < 18 then
+							S.busy = true
+							walkTo(35, 1.6)
+							S.busy = false
+						end
+						local r = math.random()
+						if r < 0.5 then
+							runAttack(attackTigerShot)
+						elseif r < 0.75 then
+							runAttack(attackOmegaShot)
+						else
+							runAttack(attackSanic)
+						end
+					end
+					setPose("Idle")
+					sleep(0.4 + math.random() * 0.5)
+				end
+			end
+		end)
+		if not ok then
+			warn("[BossBrawl] Sagat AI error: " .. tostring(err))
+			setStatus("Sagat AI error (see console)")
+		end
+	end)
+
+	return S
+end
+
+--// Watcher: starts / ends the session around the Zenithega fight
+local running = true
+
+local function startSession(debugMode)
+	if Session or Starting then return end
+	local boss, module = getBoss()
+	if not boss then
+		setStatus("Zenithega module not found")
+		return
+	end
+	Starting = true
+	task.spawn(function()
+		local S, err = createSession(boss, module, debugMode)
+		Starting = false
+		if S then
+			if running and (Enabled or debugMode) then
+				Session = S
+				setStatus(debugMode and "TEST Sagat spawned (no damage to Zenithega)" or "Brawl active - Sagat vs Zenithega")
+			else
+				Session = S
+				endSession()
+			end
+		else
+			setStatus(err or "Failed to spawn Sagat")
+		end
+	end)
+end
+
+task.spawn(function()
+	local inactive = 0
+	while running do
+		task.wait(0.25)
+		local boss = getBoss()
+		if Session then
+			if Session.debug then
+				-- test sessions are ended manually
+			elseif fightIsRunning(boss, false) then
+				inactive = 0
+			else
+				inactive = inactive + 0.25
+				if inactive > 1 then
+					inactive = 0
+					endSession()
+				end
+			end
+		elseif Enabled and not Starting and fightIsRunning(boss, true) then
+			inactive = 0
+			startSession(false)
+		end
+	end
+end)
+
+--// Panel
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "BossBrawlPanel"
+Gui.ResetOnSpawn = false
+Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Gui.Parent = PlayerGui
+
+local Panel = Instance.new("Frame")
+Panel.Size = UDim2.new(0, 260, 0, 292)
+Panel.AnchorPoint = Vector2.new(1, 0)
+Panel.Position = UDim2.new(1, -24, 0, 24)
+Panel.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
+Panel.BorderSizePixel = 0
+Panel.Parent = Gui
+Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 10)
+
+local panelStroke = Instance.new("UIStroke", Panel)
+panelStroke.Color = Color3.fromRGB(95, 60, 170)
+panelStroke.Thickness = 1.2
+panelStroke.Transparency = 0.35
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -44, 0, 36)
+Title.Position = UDim2.new(0, 12, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "Boss Brawl: Sagat vs Zenithega"
+Title.TextColor3 = Color3.fromRGB(210, 185, 255)
+Title.Font = Enum.Font.GothamMedium
+Title.TextSize = 13
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Active = true
+Title.Parent = Panel
+
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.new(0, 24, 0, 24)
+Close.Position = UDim2.new(1, -30, 0, 6)
+Close.BackgroundColor3 = Color3.fromRGB(85, 35, 95)
+Close.Text = "×"
+Close.TextColor3 = Color3.fromRGB(255, 220, 255)
+Close.Font = Enum.Font.GothamBold
+Close.TextSize = 16
+Close.Parent = Panel
+Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 6)
+
+do -- dragging
+	local dragging, dragStart, startPos = false, nil, nil
+	Title.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging, dragStart, startPos = true, input.Position, Panel.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local d = input.Position - dragStart
+			Panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+end
+
+local function makeButton(text, y, color)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, -24, 0, 30)
+	b.Position = UDim2.new(0, 12, 0, y)
+	b.BackgroundColor3 = color
+	b.Text = text
+	b.TextColor3 = Color3.fromRGB(245, 235, 255)
+	b.Font = Enum.Font.GothamMedium
+	b.TextSize = 12
+	b.Parent = Panel
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+	return b
+end
+
+local function makeField(labelText, y, default)
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(0, 130, 0, 26)
+	l.Position = UDim2.new(0, 12, 0, y)
+	l.BackgroundTransparency = 1
+	l.Text = labelText
+	l.TextColor3 = Color3.fromRGB(175, 140, 255)
+	l.Font = Enum.Font.Gotham
+	l.TextSize = 12
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Parent = Panel
+
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(0, 96, 0, 26)
+	box.Position = UDim2.new(1, -108, 0, y)
+	box.BackgroundColor3 = Color3.fromRGB(30, 24, 44)
+	box.Text = tostring(default)
+	box.TextColor3 = Color3.fromRGB(220, 205, 255)
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 13
+	box.ClearTextOnFocus = false
+	box.Parent = Panel
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+	return box
+end
+
+local Purple = Color3.fromRGB(95, 55, 165)
+local Dark = Color3.fromRGB(45, 35, 65)
+local Green = Color3.fromRGB(50, 140, 95)
+local Orange = Color3.fromRGB(165, 100, 45)
+
+local toggleButton = makeButton("Brawl: OFF", 44, Dark)
+local hpBox = makeField("Sagat HP", 82, CFG.SagatMaxHealth)
+local sagatDmgBox = makeField("Sagat -> Zenithega dmg", 112, CFG.SagatDamage)
+local zenDmgBox = makeField("Zenithega -> Sagat dmg", 142, CFG.ZenithegaDamage)
+local healButton = makeButton("Heal Sagat", 176, Green)
+local testButton = makeButton("Test spawn Sagat (no damage to Z)", 212, Purple)
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -24, 0, 36)
+StatusLabel.Position = UDim2.new(0, 12, 0, 248)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.TextWrapped = true
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.TextYAlignment = Enum.TextYAlignment.Top
+StatusLabel.TextColor3 = Color3.fromRGB(160, 145, 200)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextSize = 11
+StatusLabel.Text = "Off"
+StatusLabel.Parent = Panel
+
+setStatus = function(text)
+	StatusLabel.Text = text
+end
+
+local function bindNumber(box, key, min, onChange)
+	box.FocusLost:Connect(function()
+		local n = tonumber(box.Text)
+		if n then
+			CFG[key] = math.max(min, math.floor(n))
+			box.Text = tostring(CFG[key])
+			if onChange then onChange() end
+		else
+			box.Text = tostring(CFG[key])
+		end
+	end)
+end
+
+bindNumber(hpBox, "SagatMaxHealth", 1, function()
+	if Session then
+		Session.maxHp = CFG.SagatMaxHealth
+		Session.hp = Session.maxHp
+		Session.updateHud()
+	end
+end)
+bindNumber(sagatDmgBox, "SagatDamage", 0)
+bindNumber(zenDmgBox, "ZenithegaDamage", 0)
+
+local function setEnabled(on)
+	Enabled = on
+	toggleButton.Text = on and "Brawl: ON" or "Brawl: OFF"
+	toggleButton.BackgroundColor3 = on and Orange or Dark
+	if on then
+		setStatus("Armed - equip the Third Eye and start the fight")
+	else
+		if Session and not Session.debug then endSession() end
+		if not Session then setStatus("Off") end
+	end
+end
+
+toggleButton.MouseButton1Click:Connect(function()
+	setEnabled(not Enabled)
+end)
+
+healButton.MouseButton1Click:Connect(function()
+	if Session and Session.alive and not Session.dead then
+		Session.hp = Session.maxHp
+		Session.updateHud()
+	end
+end)
+
+testButton.MouseButton1Click:Connect(function()
+	if Session then
+		endSession()
+		return
+	end
+	startSession(true)
+end)
+
+local function destroyAll()
+	running = false
+	Enabled = false
+	endSession()
+	pcall(function() Gui:Destroy() end)
+	_G.BossBrawl = nil
+end
+
+Close.MouseButton1Click:Connect(destroyAll)
+
+_G.BossBrawl = {
+	Enable = function() setEnabled(true) end,
+	Disable = function() setEnabled(false) end,
+	Config = CFG,
+	Destroy = destroyAll,
+	GetSession = function() return Session end,
+}
+
+print("[BossBrawl] Loaded - Sagat vs Zenithega")
