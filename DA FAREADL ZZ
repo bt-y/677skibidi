@@ -3,7 +3,7 @@
 	LocalScript / executor script for "I Wanna Test The Game".
 
 	How it works
-	  * Turn the toggle ON, equip the Third Eye, walk into the Stage 6 trigger as usual.
+	  * Turn the toggle ON and start the Zenithega fight (or turn it on mid-fight).
 	  * When Zenithega's intro ends, Sagat appears at the arena's PlayerSpawn, standing
 	    on the floor (no drop from the sky).
 	  * Your character is hidden and locked inside Sagat for the whole brawl. Zenithega
@@ -142,13 +142,23 @@ local function getDamageService()
 	return DamageService
 end
 
+-- The game's own _G / shared (executors give scripts a separate copy)
+local GameShared = shared
+pcall(function()
+	if getrenv then
+		local env = getrenv()
+		if type(env) == "table" and type(env.shared) == "table" then
+			GameShared = env.shared
+		end
+	end
+end)
+
 -- Is a Zenithega fight running right now (intro done)?
-local function fightIsRunning(boss, needEye)
+local function fightIsRunning(boss)
 	if not boss then return false end
-	if needEye and not _G.EvilEye then return false end
 	local zone = boss.zenithega_zone
 	local part = boss.Zenithega
-	return shared.inBattle == true
+	return GameShared.inBattle == true
 		and zone ~= nil and zone.Parent ~= nil
 		and part ~= nil and part.Parent ~= nil and part.Parent.Name == "BossFight"
 		and boss.IntroFinished == true
@@ -986,7 +996,7 @@ task.spawn(function()
 	while running do
 		task.wait(0.25)
 		local boss = getBoss()
-		local live = fightIsRunning(boss, false)
+		local live = fightIsRunning(boss)
 		if not live then
 			Finished = false
 		end
@@ -1000,7 +1010,7 @@ task.spawn(function()
 					endSession()
 				end
 			end
-		elseif Enabled and not Starting and fightIsRunning(boss, true) then
+		elseif Enabled and not Starting and live then
 			inactive = 0
 			startSession()
 		end
@@ -1175,7 +1185,7 @@ local function setEnabled(on)
 	toggleButton.Text = on and "Brawl: ON" or "Brawl: OFF"
 	toggleButton.BackgroundColor3 = on and Orange or Dark
 	if on then
-		setStatus("Armed - equip the Third Eye and start the fight")
+		setStatus("Armed - Sagat joins once the Zenithega fight is running")
 	else
 		if Session then endSession() end
 		setStatus("Off")
