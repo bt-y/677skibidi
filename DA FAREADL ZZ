@@ -8,7 +8,10 @@
 	  * Your character disappears and rides inside Sagat, so everything Zenithega aims
 	    at you goes to him. You can't be hurt; you get control back when the brawl ends.
 	  * Sagat walks, jumps and uses his own moves: Tiger Shots, Omega Shots, Sanic lobs,
-	    jumping Tiger Shots and the Tiger Uppercut.
+	    jumping Tiger Shots and the Tiger Uppercut. His shots home in on her, and when she
+	    floats out of reach he leaps up to her height and hits her in the air.
+	  * Attacks that must be stopped with a charged shot (Death, Heaven's Wrath, her heal,
+	    her shield, swords, Zundamon) are countered by Sagat with charged shots.
 	  * Sagat deals REAL damage to Zenithega through her own TakeDamage: her health bar
 	    drops and she goes into phase 2 and her final phase normally.
 	  * The killing blow is never dealt: when a final-phase hit would finish her, Sagat
@@ -325,13 +328,18 @@ local function createSession(boss, module)
 		return (not S.alive) or S.dead or S.over
 	end
 
+	-- a charged counter is the only thing allowed to cut an attack short
+	local function mustCounter()
+		return S.counterPending and not S.countering
+	end
+
 	local function sleep(t)
 		local t0 = os.clock()
 		while os.clock() - t0 < t do
-			if stopped() then return false end
+			if stopped() or mustCounter() then return false end
 			task.wait()
 		end
-		return not stopped()
+		return not stopped() and not mustCounter()
 	end
 
 	local function zenPos()
@@ -515,6 +523,7 @@ local function createSession(boss, module)
 	local function damageZenithega(dmg)
 		if S.over or not HealthLock then return false end
 		if boss.Dead or boss.CannotTakeDamage then return false end -- phase change in progress
+		if type(boss.Shield) == "table" and not boss.Shield.Dead then return false end -- shielded
 		local health = boss.Health or 0
 		if boss.FinalPhaseActive and health - dmg <= FINISH_HP then
 			finish("Sagat")
@@ -657,6 +666,9 @@ local function createSession(boss, module)
 		Debris:AddItem(proj.part, 0.25)
 	end
 
+	-- p.homing  = turn rate (rad/s) toward the target
+	-- p.target  = function returning the target's y, z (nil when it's gone); default is Zenithega
+	-- p.onHit   = what happens on contact with p.target
 	local function updateProjectiles(dt)
 		local zy, zz = zenPos()
 		local tangible = zenTangible()
@@ -665,6 +677,21 @@ local function createSession(boss, module)
 			if p.dead or not p.part.Parent then
 				table.remove(S.projectiles, i)
 			else
+				local ty, tz
+				if p.target then
+					ty, tz = p.target()
+				else
+					ty, tz = zy, zz
+				end
+				if p.homing and ty then
+					local speed = math.sqrt(p.vy * p.vy + p.vz * p.vz)
+					local cur = math.atan2(p.vy, p.vz)
+					local want = math.atan2(ty - p.y, tz - p.z)
+					local diff = (want - cur + math.pi) % (2 * math.pi) - math.pi
+					local step = p.homing * dt
+					cur = cur + math.clamp(diff, -step, step)
+					p.vy, p.vz = math.sin(cur) * speed, math.cos(cur) * speed
+				end
 				p.vy = p.vy - p.g * dt
 				p.y = p.y + p.vy * dt
 				p.z = p.z + p.vz * dt
@@ -681,11 +708,20 @@ local function createSession(boss, module)
 					p.frame = p.frame % 2 + 1
 					p.label.Image = PROJECTILE.Tiger.frames[p.frame]
 				end
-				if tangible and not S.over and math.abs(p.y - zy) < 6.2 and math.abs(p.z - zz) < 4.2 then
+
+				local done = false
+				if p.target then
+					if not ty then
+						done = true -- its target is gone
+					elseif math.abs(p.y - ty) < p.hitRadius and math.abs(p.z - tz) < p.hitRadius then
+						done = true
+						if p.onHit then pcall(p.onHit) end
+					end
+				elseif tangible and not S.over and math.abs(p.y - zy) < 6.2 and math.abs(p.z - zz) < 4.2 then
+					done = true
 					damageZenithega(CFG.SagatDamage)
-					explode(p)
-					table.remove(S.projectiles, i)
-				elseif os.clock() - p.born > p.life or p.y < S.floorY - 4 then
+				end
+				if done or os.clock() - p.born > p.life or p.y < S.floorY - 4 then
 					explode(p)
 					table.remove(S.projectiles, i)
 				end
@@ -755,8 +791,9 @@ local function createSession(boss, module)
 		local dy, dz, dist = aimAt(sy, sz)
 		local angle = math.atan2(dy, dz) + math.rad(math.random(-spread, spread))
 		local speed = 42
-		spawnProjectile("Tiger", sy, sz, math.sin(angle) * speed, math.cos(angle) * speed,
-			math.min(dist / speed + 1.5, 5), 0)
+		local proj = spawnProjectile("Tiger", sy, sz, math.sin(angle) * speed, math.cos(angle) * speed,
+			math.min(dist / speed + 2.5, 6), 0)
+		if proj then proj.homing = 3 end
 		playSound(SOUND.TIGER, 0.6)
 	end
 
@@ -800,7 +837,8 @@ local function createSession(boss, module)
 			local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
 			local dy, dz, dist = aimAt(sy, sz)
 			local speed = 38
-			spawnProjectile("Omega", sy, sz, dy * speed, dz * speed, math.min(dist / speed + 1.5, 5), 0)
+			local proj = spawnProjectile("Omega", sy, sz, dy * speed, dz * speed, math.min(dist / speed + 2.5, 6), 0)
+			if proj then proj.homing = 2.5 end
 			if not sleep(0.4) then return end
 		end
 		sleep(0.25)
@@ -883,11 +921,141 @@ local function createSession(boss, module)
 		sleep(0.3)
 	end
 
+	-- she's floating out of reach: leap up to her height, hang there and hit her
+	local function attackLeap()
+		plant()
+		local ty, tz = zenPos()
+		local h = math.clamp(ty - S.y, 8, 130)
+		setPose("Jump", true)
+		if not sleep(0.15) then return end
+		S.vy = math.sqrt(2 * CFG.Gravity * h)
+		local tApex = S.vy / CFG.Gravity
+		S.vz = math.clamp((tz - S.z) / math.max(tApex, 0.3) * 0.85, -70, 70)
+		local t0 = os.clock()
+		while not stopped() and S.vy > 6 and os.clock() - t0 < 2.5 do
+			task.wait()
+		end
+		S.vz = 0
+		if stopped() then return end
+		S.gravScale = 0.12 -- hang in the air for the combo
+		local zy, zz = zenPos()
+		if math.abs(zz - S.z) < 10 and math.abs(zy - S.y) < 10 then
+			faceTarget()
+			setPose("Uppercut", true)
+			playSound(SOUND.UPPERCUT)
+			damageZenithega(CFG.SagatDamage)
+			sleep(0.2)
+		end
+		for _ = 1, 4 do
+			if stopped() then break end
+			faceTarget()
+			setPose("Tiger", true)
+			fireTiger(3)
+			if not sleep(0.12) then break end
+		end
+		S.gravScale = 1
+		setPose("Fall", true)
+		waitLanding(3)
+		sleep(0.2)
+	end
+
+	--// Charged counters: the same "charged hit" your pistol / javelin / GGCC deliver.
+	--// It stops Death, Heaven's Wrath, her heal, breaks her shield, swords and Zundamon.
+	local COUNTER_MOVES = {
+		["Heaven's Wrath"] = true, ["Heaven's Wrath (Final)"] = true,
+		["Heal (Final Phase)"] = true, ["Shield"] = true, ["Shield (Final)"] = true,
+	}
+	S.counterHits = setmetatable({}, { __mode = "k" })
+
+	local function findCounterTargets()
+		local list = {}
+		local tempPart = workspace:FindFirstChild("TempPart")
+		if tempPart then
+			for _, d in ipairs(tempPart:GetDescendants()) do
+				if d:IsA("BindableEvent") and d.Name == "hit" and d.Parent and d.Parent:IsA("BasePart")
+					and (S.counterHits[d] or 0) < 4 then
+					list[#list + 1] = { event = d, part = d.Parent }
+				end
+			end
+		end
+		local hb = zenPart:FindFirstChild("Hitbox")
+		local zenHit = hb and hb:FindFirstChild("hit")
+		if zenHit and (S.counterHits[zenHit] or 0) < 6 then
+			local need = type(boss.Shield) == "table" and not boss.Shield.Dead
+			if not need then
+				local ok, active = pcall(boss.ReturnActiveMoves, boss)
+				if ok and type(active) == "table" then
+					for _, mv in ipairs(active) do
+						if COUNTER_MOVES[mv.name] then need = true break end
+					end
+				end
+			end
+			if need then
+				list[#list + 1] = { event = zenHit, part = zenPart, isZen = true }
+			end
+		end
+		return list
+	end
+	S.findCounterTargets = findCounterTargets
+
+	local function fireCharged(t)
+		local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+		local tp = t.part.Position
+		local dy, dz = tp.Y - sy, tp.Z - sz
+		local len = math.max(math.sqrt(dy * dy + dz * dz), 0.001)
+		local speed = 60
+		local proj = spawnProjectile("Omega", sy, sz, dy / len * speed, dz / len * speed, 4, 0)
+		if not proj then return end
+		pcall(function() proj.part.Size = proj.part.Size * 1.6 end)
+		if proj.label then proj.label.ImageColor3 = Color3.fromRGB(255, 220, 90) end
+		proj.homing = 12
+		proj.hitRadius = 4 + math.min(t.part.Size.Magnitude * 0.25, 6)
+		proj.target = function()
+			if t.isZen then
+				if not zenPart.Parent then return nil end
+			elseif not (t.part.Parent and t.event.Parent) then
+				return nil
+			end
+			local pos = t.part.Position
+			return pos.Y, pos.Z
+		end
+		proj.onHit = function()
+			S.counterHits[t.event] = (S.counterHits[t.event] or 0) + 1
+			t.event:Fire(CFG.SagatDamage, { Charged = true, Damage = CFG.SagatDamage, Type = 1 }, 1, {})
+			if t.isZen then damageZenithega(CFG.SagatDamage) end
+		end
+		playSound(SOUND.TIGER, 1)
+	end
+
+	local function attackCounter()
+		S.countering = true
+		local shots = 0
+		while not stopped() and shots < 8 do
+			local targets = findCounterTargets()
+			if #targets == 0 then break end
+			local t = targets[1]
+			S.vz = 0
+			S.faceLeft = t.part.Position.Z < S.z
+			setPose("Tiger", true)
+			label.ImageColor3 = Color3.fromRGB(255, 220, 90) -- charging glow
+			playSound(SOUND.OMEGA, 1)
+			if not sleep(0.35) then break end
+			label.ImageColor3 = Color3.new(1, 1, 1)
+			fireCharged(t)
+			shots = shots + 1
+			if not sleep(0.3) then break end
+		end
+		label.ImageColor3 = Color3.new(1, 1, 1)
+		S.countering = false
+		S.counterPending = false
+		S.counterCooldown = os.clock() + 0.6
+	end
+
 	local function walkTo(targetDist, maxTime)
 		waitLanding(2)
 		setPose("Walk")
 		local t0 = os.clock()
-		while os.clock() - t0 < maxTime and not stopped() do
+		while os.clock() - t0 < maxTime and not stopped() and not mustCounter() do
 			local _, tz = zenPos()
 			local dz = tz - S.z
 			local d = math.abs(dz)
@@ -933,7 +1101,7 @@ local function createSession(boss, module)
 	--// frame update
 	local function physics(dt)
 		if S.vy ~= 0 or S.y > S.groundY + 0.01 then
-			S.vy = S.vy - CFG.Gravity * dt
+			S.vy = S.vy - CFG.Gravity * (S.gravScale or 1) * dt
 			S.y = S.y + S.vy * dt
 			if S.y <= S.groundY then
 				S.y = S.groundY
@@ -944,7 +1112,7 @@ local function createSession(boss, module)
 		S.z = math.clamp(S.z + S.vz * dt, S.minZ, S.maxZ)
 	end
 
-	local scanTimer, hideTimer = 0, 0
+	local scanTimer, hideTimer, counterTimer = 0, 0, 0
 	S.conns[#S.conns + 1] = RunService.RenderStepped:Connect(function(dt)
 		if not S.alive then return end
 		physics(dt)
@@ -969,6 +1137,13 @@ local function createSession(boss, module)
 			scanTimer = 0
 			scanZenithegaAttacks()
 		end
+		counterTimer = counterTimer + dt
+		if counterTimer >= 0.15 then
+			counterTimer = 0
+			if not S.countering and not S.over and os.clock() >= (S.counterCooldown or 0) then
+				S.counterPending = #findCounterTargets() > 0
+			end
+		end
 	end)
 
 	--// brain: one committed move at a time, then a short recovery
@@ -987,8 +1162,23 @@ local function createSession(boss, module)
 				local dz, dy = math.abs(tz - S.z), ty - S.y
 				local move
 
-				if dz < 14 and math.abs(dy) < 12 and last ~= attackUppercut then
+				if S.counterPending then
+					move = attackCounter
+				elseif dz < 14 and math.abs(dy) < 12 and last ~= attackUppercut then
 					move = attackUppercut
+				elseif dy > 15 then
+					-- she's floating out of reach: leap up to her or use homing shots
+					if dz > 70 then
+						S.busy = true
+						walkTo(40, 1.5)
+						S.busy = false
+					end
+					move = pickMove({
+						{ attackLeap, 45 },
+						{ attackTigerShot, 25 },
+						{ attackOmegaShot, 20 },
+						{ attackJumpShot, 10 },
+					}, last)
 				else
 					-- get to a comfortable range first (walking is its own step)
 					if dz > 60 then
@@ -1000,20 +1190,26 @@ local function createSession(boss, module)
 						walkTo(30, 1)
 						S.busy = false
 					end
-					local high = dy > 15
 					move = pickMove({
 						{ attackTigerShot, 40 },
 						{ attackOmegaShot, 25 },
-						{ attackSanic, high and 10 or 20 },
-						{ attackJumpShot, high and 30 or 10 },
+						{ attackSanic, 20 },
+						{ attackJumpShot, 15 },
 					}, last)
 				end
 
 				if stopped() then break end
-				last = move
+				if S.counterPending and move ~= attackCounter then
+					move = attackCounter
+				end
+				if move ~= attackCounter then last = move end
+				S.gravScale = 1
 				runAttack(move)
+				S.gravScale = 1
 				if stopped() then break end
-				sleep(0.5 + math.random() * 0.4)
+				if not S.counterPending then
+					sleep(0.5 + math.random() * 0.4)
+				end
 			end
 		end)
 		if not ok then
