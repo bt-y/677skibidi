@@ -16,6 +16,9 @@
 	    under Zangief when he drops in during her final phase.
 	  * Master Spark: low beam -> he double-jumps over it; high beam -> he crouches.
 	  * Swords: he hits HER with a charged shot, which ends the attack.
+	  * He parries her shockwaves, shoots her apples down (and double-jumps to drag them
+	    up when they get close), and climbs the wall to dodge the opening laser.
+	  * Final phase: infinite jumps - he flies up to her and fights her in the air.
 	  * When Sagat wins, Zenithega plays her defeat animation and stays down, and Sagat
 	    walks back to the start of the arena and laughs. Use "Leave fight" to respawn.
 	  * Sagat deals REAL damage to Zenithega through her own TakeDamage: her health bar
@@ -51,6 +54,7 @@ local CFG = {
 	JumpPower = 72,
 	Gravity = 150,
 	HitCooldown = 0.35,            -- Sagat's invulnerability window after each hit
+	WallClimbHeight = 40,          -- how high he climbs the wall to dodge the opening laser
 }
 
 local SOUND = {
@@ -401,6 +405,8 @@ local function createSession(boss, module)
 	local function mustCounter()
 		return (S.counterPending and not S.countering) or (S.evadePending and not S.evading)
 			or (S.beamPending and not S.beamDodging)
+			or (S.climbPending and not S.climbing)
+			or (S.fruitPending and not S.fruiting)
 	end
 
 	local function sleep(t)
@@ -526,6 +532,8 @@ local function createSession(boss, module)
 		S.evadePending = false
 		S.beamPending = false
 		S.crouching = false
+		S.climbPending = false
+		S.fruitPending = false
 		local endDelay = 4
 		if winner == "Sagat" then
 			S.resultText = "SAGAT WINS"
@@ -660,6 +668,7 @@ local function createSession(boss, module)
 			cgs:SetAttribute("can_take_action", true)
 		end
 		pcall(function() ff:Destroy() end)
+		if cgs then cgs:SetAttribute("parry_state", false) end
 		if hrp.Parent then
 			hrp.Anchored = wasAnchored
 			hrp.CFrame = CFrame.new(S.planeX, S.floorY + 3, S.z)
@@ -755,6 +764,46 @@ local function createSession(boss, module)
 		Debris:AddItem(proj.part, 0.25)
 	end
 
+	--// Her apples / fruits: models in TempPart with a "hit" event. Any hit shrinks them;
+	--// enough hits make them explode (same as your pistol shots).
+	S.fruits = {}
+	local function findFruits()
+		local list = {}
+		local tp = workspace:FindFirstChild("TempPart")
+		if not tp then return list end
+		for _, c in ipairs(tp:GetChildren()) do
+			if c:IsA("Model") and c.Name ~= "Wave" and c.PrimaryPart then
+				local h = c:FindFirstChild("hit")
+				if h and h:IsA("BindableEvent") then list[#list + 1] = c end
+			end
+		end
+		return list
+	end
+	S.findFruits = findFruits
+
+	local function fruitRadius(m)
+		local pp = m.PrimaryPart
+		return pp and (pp.Size.Magnitude * 0.35 + 1.5) or 3
+	end
+
+	local function fruitAt(y, z)
+		for _, f in ipairs(S.fruits) do
+			local pp = f.Parent and f.PrimaryPart
+			if pp then
+				local r = fruitRadius(f)
+				if math.abs(pp.Position.Y - y) < r and math.abs(pp.Position.Z - z) < r then return f end
+			end
+		end
+		return nil
+	end
+
+	local function hitFruit(f)
+		local h = f and f:FindFirstChild("hit")
+		if h then
+			h:Fire(CFG.SagatDamage, { Damage = CFG.SagatDamage, Type = 1 }, 1, {})
+		end
+	end
+
 	-- p.homing  = turn rate (rad/s) toward the target
 	-- p.target  = function returning the target's y, z (nil when it's gone); default is Zenithega
 	-- p.onHit   = what happens on contact with p.target
@@ -806,6 +855,9 @@ local function createSession(boss, module)
 						done = true
 						if p.onHit then pcall(p.onHit) end
 					end
+				elseif fruitAt(p.y, p.z) then
+					done = true
+					hitFruit(fruitAt(p.y, p.z))
 				elseif tangible and not S.over and math.abs(p.y - zy) < 6.2 and math.abs(p.z - zz) < 4.2 then
 					done = true
 					damageZenithega(CFG.SagatDamage)
@@ -1151,12 +1203,26 @@ local function createSession(boss, module)
 	S.moveSeen = {}
 	local lastZenZ, lastJumpAt = nil, 0
 
-	local function jumpNow()
-		if not S.grounded or os.clock() - lastJumpAt < 0.45 then return end
-		lastJumpAt = os.clock()
+	-- one extra jump in the air normally (double jump); unlimited in her final phase
+	local function maxAirJumps()
+		return boss.FinalPhaseActive and math.huge or 1
+	end
+
+	local function jumpNow(allowAir)
+		local now = os.clock()
+		if S.grounded then
+			if now - lastJumpAt < 0.45 then return end
+			S.airJumps = 0
+		else
+			if not allowAir or now - lastJumpAt < 0.28 then return end
+			if (S.airJumps or 0) >= maxAirJumps() then return end
+			S.airJumps = (S.airJumps or 0) + 1
+		end
+		lastJumpAt = now
 		S.vy = CFG.JumpPower
 		if not S.busy then setPose("Jump", true) end
 	end
+	S.jumpNow = jumpNow
 
 	local function activeMoveNames()
 		local names = {}
@@ -1193,6 +1259,42 @@ local function createSession(boss, module)
 		local zg = workspace:FindFirstChild("Zangeif")
 		if zg and zg:IsA("BasePart") then
 			return zg, zg:FindFirstChild("destruction hitbox")
+		end
+	end
+
+	--// Shockwaves: parry them the way you do - the wave checks the parry state the
+	--// moment it reaches you, so Sagat raises it just before contact.
+	local PARRY_SOUND = 15171252772
+	local function doParry()
+		if cgs then
+			cgs:SetAttribute("parry_state", true)
+			task.delay(0.3, function()
+				if cgs then cgs:SetAttribute("parry_state", false) end
+			end)
+		end
+		label.ImageColor3 = Color3.fromRGB(120, 200, 255)
+		task.delay(0.12, function()
+			if label.Parent then label.ImageColor3 = Color3.new(1, 1, 1) end
+		end)
+		playSound(PARRY_SOUND, 0.8)
+		S.parries = (S.parries or 0) + 1
+	end
+
+	local function parryWaves()
+		local tp = workspace:FindFirstChild("TempPart")
+		if not tp or not hrp.Parent then return end
+		local hp = hrp.Position
+		for _, w in ipairs(tp:GetChildren()) do
+			if w.Name == "Wave" and not S.waveHit[w] then
+				local pp = w:IsA("Model") and w.PrimaryPart or (w:IsA("BasePart") and w) or nil
+				if pp then
+					local d = (hp - pp.Position).Magnitude - pp.Size.X / 2
+					if d < 3 then
+						S.waveHit[w] = true -- parried: the wave doesn't hurt him
+						doParry()
+					end
+				end
+			end
 		end
 	end
 
@@ -1243,6 +1345,28 @@ local function createSession(boss, module)
 			end
 		end
 
+		-- 5) apples homing in: jump / double jump so they follow him up instead of hitting him
+		local nearestD
+		for _, f in ipairs(S.fruits) do
+			local pp = f.Parent and f.PrimaryPart
+			if pp then
+				local dy, dz = pp.Position.Y - S.y, pp.Position.Z - S.z
+				local d = math.sqrt(dy * dy + dz * dz) - fruitRadius(f)
+				if not nearestD or d < nearestD then nearestD = d end
+			end
+		end
+		if nearestD and nearestD < 14 then
+			jumpNow(true)
+		end
+		if #S.fruits > 0 and not S.fruiting and not S.fruitPending then
+			S.fruitPending = true
+		end
+
+		-- 6) her opening laser (in the starter attack): climb the wall
+		if names["Intro"] and S.beamVisible and S.beamVisible() and not S.climbing and not S.climbPending then
+			S.climbPending = true
+		end
+
 		-- 4) Zangief dropping from the roof: get out from under him
 		local zg, hb = findZangief()
 		if zg and not S.evading and not S.evadePending then
@@ -1283,6 +1407,8 @@ local function createSession(boss, module)
 		end
 		return false
 	end
+
+	S.beamVisible = beamVisible
 
 	local function beamActive()
 		return activeMoveNames()["Obliteration Beam"] == true or beamVisible()
@@ -1334,6 +1460,112 @@ local function createSession(boss, module)
 		end
 		S.crouching = false
 		S.beamDodging = false
+	end
+
+	-- shoot her apples down (6 hits each), nearest first
+	local function fireAtFruit(m)
+		local pp = m.PrimaryPart
+		if not pp then return end
+		local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+		local tp = pp.Position
+		local dy, dz = tp.Y - sy, tp.Z - sz
+		local len = math.max(math.sqrt(dy * dy + dz * dz), 0.001)
+		local speed = 60
+		local proj = spawnProjectile("Tiger", sy, sz, dy / len * speed, dz / len * speed, 3, 0)
+		if not proj then return end
+		proj.homing = 9
+		proj.hitRadius = fruitRadius(m)
+		proj.target = function()
+			if m.Parent and m.PrimaryPart then
+				local pos = m.PrimaryPart.Position
+				return pos.Y, pos.Z
+			end
+			return nil
+		end
+		proj.onHit = function() hitFruit(m) end
+		playSound(SOUND.TIGER, 0.5)
+	end
+
+	local function attackFruits()
+		S.fruiting = true
+		S.fruitPending = false
+		local t0 = os.clock()
+		while not stopped() and os.clock() - t0 < 8 do
+			local fruits = findFruits()
+			if #fruits == 0 then break end
+			local best, bestD
+			for _, f in ipairs(fruits) do
+				local pos = f.PrimaryPart.Position
+				local d = math.abs(pos.Y - S.y) + math.abs(pos.Z - S.z)
+				if not bestD or d < bestD then best, bestD = f, d end
+			end
+			S.vz = 0
+			S.faceLeft = best.PrimaryPart.Position.Z < S.z
+			setPose("Tiger", true)
+			fireAtFruit(best)
+			if not sleep(0.13) then break end
+		end
+		S.fruiting = false
+	end
+
+	-- opening laser: run to the nearest wall and climb it until the laser is over
+	local function attackWallClimb()
+		S.climbing = true
+		S.climbPending = false
+		local wallZ = (math.abs(S.z - S.minZ) <= math.abs(S.z - S.maxZ)) and S.minZ or S.maxZ
+		setPose("Walk", true)
+		local t0 = os.clock()
+		while not stopped() and math.abs(S.z - wallZ) > 0.8 and os.clock() - t0 < 3 do
+			S.faceLeft = wallZ < S.z
+			S.vz = (wallZ > S.z and 1 or -1) * CFG.WalkSpeed * 1.6
+			task.wait()
+		end
+		S.vz = 0
+		local topY = S.floorY + CFG.WallClimbHeight
+		local roof = zone:FindFirstChild("roof")
+		if roof and roof:IsA("BasePart") then
+			topY = math.min(topY, roof.Position.Y - roof.Size.Y / 2 - halfHeight - 2)
+		end
+		S.gravScale = 0
+		setPose("Jump", true)
+		while not stopped() and S.y < topY and os.clock() - t0 < 6 do
+			S.vy = 32 -- climbing
+			task.wait()
+		end
+		S.vy = 0
+		setPose("Idle", true)
+		while not stopped() and S.beamVisible() and os.clock() - t0 < 16 do
+			S.vy = 0 -- holding on to the wall
+			task.wait()
+		end
+		S.gravScale = 1
+		setPose("Fall", true)
+		waitLanding(4)
+		S.climbing = false
+	end
+
+	-- final phase: chase her through the air with infinite jumps, shooting on the way
+	local function attackAirChase()
+		local t0 = os.clock()
+		local lastShot = 0
+		while not stopped() and os.clock() - t0 < 3.5 do
+			local zy, zz = zenPos()
+			local wantZ = zz + ((S.z < zz) and -14 or 14)
+			S.vz = math.clamp((wantZ - S.z) * 3, -CFG.WalkSpeed * 1.6, CFG.WalkSpeed * 1.6)
+			if S.vy < 2 and S.y < zy - 1 then
+				jumpNow(true)
+			end
+			faceTarget()
+			if os.clock() - lastShot > 0.28 then
+				lastShot = os.clock()
+				setPose("Tiger", true)
+				fireTiger(3)
+			end
+			if not sleep(0.03) then break end
+		end
+		S.vz = 0
+		setPose("Fall", true)
+		waitLanding(4)
 	end
 
 	local function attackEvade()
@@ -1461,10 +1693,11 @@ local function createSession(boss, module)
 			end
 		end
 		S.grounded = S.y <= S.groundY + 0.02
+		if S.grounded then S.airJumps = 0 end
 		S.z = math.clamp(S.z + S.vz * dt, S.minZ, S.maxZ)
 	end
 
-	local scanTimer, hideTimer, counterTimer = 0, 0, 0
+	local scanTimer, hideTimer, counterTimer, fruitTimer = 0, 0, 0, 0
 	S.conns[#S.conns + 1] = RunService.RenderStepped:Connect(function(dt)
 		if not S.alive then return end
 		physics(dt)
@@ -1482,6 +1715,15 @@ local function createSession(boss, module)
 		if hideTimer >= 0.5 then
 			hideTimer = 0
 			setHidden(true)
+		end
+
+		fruitTimer = fruitTimer + dt
+		if fruitTimer >= 0.1 then
+			fruitTimer = 0
+			S.fruits = findFruits()
+		end
+		if not S.over and not S.dead then
+			parryWaves()
 		end
 
 		updateProjectiles(dt)
@@ -1524,10 +1766,14 @@ local function createSession(boss, module)
 
 				if S.evadePending then
 					move = attackEvade
+				elseif S.climbPending then
+					move = attackWallClimb
 				elseif S.beamPending then
 					move = attackBeamDodge
 				elseif S.counterPending or #findCounterTargets() > 0 then
 					move = attackCounter
+				elseif S.fruitPending or #findFruits() > 0 then
+					move = attackFruits
 				elseif dz < 14 and math.abs(dy) < 12 and last ~= attackUppercut then
 					move = attackUppercut
 				elseif dy > 15 then
@@ -1537,12 +1783,22 @@ local function createSession(boss, module)
 						walkTo(40, 1.5)
 						S.busy = false
 					end
-					move = pickMove({
-						{ attackLeap, 45 },
-						{ attackTigerShot, 25 },
-						{ attackOmegaShot, 20 },
-						{ attackJumpShot, 10 },
-					}, last)
+					if boss.FinalPhaseActive then
+						-- infinite jumps: fly up to her and fight her in the air
+						move = pickMove({
+							{ attackAirChase, 50 },
+							{ attackTigerShot, 20 },
+							{ attackOmegaShot, 15 },
+							{ attackLeap, 15 },
+						}, last)
+					else
+						move = pickMove({
+							{ attackLeap, 45 },
+							{ attackTigerShot, 25 },
+							{ attackOmegaShot, 20 },
+							{ attackJumpShot, 10 },
+						}, last)
+					end
 				else
 					-- get to a comfortable range first (walking is its own step)
 					if dz > 60 then
@@ -1559,23 +1815,33 @@ local function createSession(boss, module)
 						{ attackOmegaShot, 25 },
 						{ attackSanic, 20 },
 						{ attackJumpShot, 15 },
+						{ attackAirChase, boss.FinalPhaseActive and 25 or 0 },
 					}, last)
 				end
 
 				if stopped() then break end
 				if S.evadePending then
 					move = attackEvade
+				elseif S.climbPending then
+					move = attackWallClimb
 				elseif S.beamPending then
 					move = attackBeamDodge
 				elseif S.counterPending and move ~= attackCounter then
 					move = attackCounter
+				elseif S.fruitPending and move ~= attackFruits then
+					move = attackFruits
 				end
-				if move ~= attackCounter and move ~= attackEvade and move ~= attackBeamDodge then last = move end
+				local reactive = {
+					[attackCounter] = true, [attackEvade] = true, [attackBeamDodge] = true,
+					[attackWallClimb] = true, [attackFruits] = true,
+				}
+				if not reactive[move] then last = move end
 				S.gravScale = 1
 				runAttack(move)
 				S.gravScale = 1
 				if stopped() then break end
-				if not S.counterPending and not S.evadePending and not S.beamPending then
+				if not S.counterPending and not S.evadePending and not S.beamPending
+					and not S.climbPending and not S.fruitPending then
 					sleep(0.5 + math.random() * 0.4)
 				end
 			end
