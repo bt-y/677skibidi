@@ -101,6 +101,7 @@ local PROJECTILE = {
 local ATTACK_KEYWORDS = {
 	"cherry", "fruit", "spike", "sword", "projectile", "blackhole", "flamepillar",
 	"hitbox", "zundamon", "slash", "wrath", "lazer", "laser", "beam", "zangeif",
+	"explosion", "star", "orb", "bullet", "disco", "knife", "shard", "ice", "blitz",
 }
 
 local function playSound(id, volume)
@@ -1308,9 +1309,96 @@ local function createSession(boss, module)
 		end
 	end
 
+	--// General dodging: watch every attack object she has out, predict where it's going,
+	--// and jump / double jump, duck, or side-step out of its path.
+	S.prevPos = setmetatable({}, { __mode = "k" })
+	local lastDuck, lastStep = 0, 0
+
+	local function objectBox(o)
+		if o:IsA("BasePart") then return o.Position, o.Size end
+		if o:IsA("Model") then
+			local ok, cf, size = pcall(o.GetBoundingBox, o)
+			if ok then return cf.Position, size end
+		end
+		return nil
+	end
+
+	local function isThreat(o)
+		if o.Name == "Wave" or o.Name == "SpikeModel" or COUNTER_PARTS[o.Name] then return false end
+		if o:IsA("Model") and o:FindFirstChild("hit") then return false end -- apples: own system
+		if o:GetAttribute("ZProjectile") then return true end
+		local n = string.lower(o.Name)
+		if string.find(n, "spike", 1, true) then return false end -- floor spikes: own system
+		for _, key in ipairs(ATTACK_KEYWORDS) do
+			if string.find(n, key, 1, true) then return true end
+		end
+		return false
+	end
+
+	local function react(cy, cz, vy, vz, moving, now)
+		if moving and math.abs(vz) >= math.abs(vy) then
+			-- coming across the lane
+			if cy > halfHeight * 0.35 and S.grounded then
+				if now - lastDuck > 0.5 then
+					lastDuck = now
+					S.duckUntil = now + 0.45 -- passing high: duck under it
+					if not S.busy then setPose("Crouch", true) end
+				end
+			else
+				jumpNow(true) -- low or at his body: jump / double jump over it
+			end
+		elseif now - lastStep > 0.35 then
+			-- dropping on him, or a hazard sitting on him: step aside, away from it
+			lastStep = now
+			local dir = (cz > 0) and -1 or 1
+			if (dir < 0 and S.z < S.minZ + 6) or (dir > 0 and S.z > S.maxZ - 6) then dir = -dir end
+			S.dodgeVz = dir * 55
+			S.dodgeUntil = now + 0.3
+			if moving and vy < 0 and not S.grounded then jumpNow(true) end
+		end
+	end
+
+	local function threatScan(dt, now)
+		local tp = workspace:FindFirstChild("TempPart")
+		if not tp or dt <= 0 then return end
+		local hh, hw = halfHeight + 0.5, 2.5
+		for _, o in ipairs(tp:GetChildren()) do
+			if isThreat(o) then
+				local pos, size = objectBox(o)
+				if pos and size and math.max(size.X, size.Y, size.Z) < 80 then
+					local prev = S.prevPos[o]
+					S.prevPos[o] = pos
+					local r = math.min(math.max(size.Y, size.Z) / 2, 12)
+					local ry, rz = pos.Y - S.y, pos.Z - S.z
+					local vy, vz = 0, 0
+					if prev then
+						vy, vz = (pos.Y - prev.Y) / dt, (pos.Z - prev.Z) / dt
+					end
+					local sp2 = vy * vy + vz * vz
+					local moving = sp2 > 25
+					local t = 0
+					if moving then
+						t = math.clamp(-(ry * vy + rz * vz) / sp2, 0, 0.55) -- closest approach soon
+					end
+					local cy, cz = ry + vy * t, rz + vz * t
+					local onPath = math.abs(cy) < hh + r and math.abs(cz) < hw + r
+					local onHim = math.abs(ry) < hh + r and math.abs(rz) < hw + r + 2
+					if (moving and onPath) or (not moving and onHim) then
+						react(cy, cz, vy, vz, moving, now)
+					end
+				end
+			end
+		end
+	end
+
 	local function dodgeReflex(dt)
 		local now = os.clock()
 		local zy, zz = zenPos()
+
+		-- 0) everything she has flying around
+		if not S.climbing and not S.beamDodging and not S.evading then
+			threatScan(dt, now)
+		end
 
 		-- 1) her dashes and melee lunges
 		local names = activeMoveNames()
@@ -1762,20 +1850,23 @@ local function createSession(boss, module)
 		end
 		S.grounded = S.y <= S.groundY + 0.02
 		if S.grounded then S.airJumps = 0 end
-		S.z = math.clamp(S.z + S.vz * dt, S.minZ, S.maxZ)
+		local vz = S.vz
+		if S.dodgeUntil and os.clock() < S.dodgeUntil then vz = S.dodgeVz or vz end
+		S.z = math.clamp(S.z + vz * dt, S.minZ, S.maxZ)
 	end
 
 	local scanTimer, hideTimer, counterTimer, fruitTimer = 0, 0, 0, 0
 	S.conns[#S.conns + 1] = RunService.RenderStepped:Connect(function(dt)
 		if not S.alive then return end
 		physics(dt)
-		part.CFrame = CFrame.new(S.planeX - 2, S.y - (S.crouching and 2 or 0), S.z) * CFrame.Angles(0, math.pi / 2, 0)
+		local crouched = S.crouching or (S.duckUntil ~= nil and os.clock() < S.duckUntil)
+		part.CFrame = CFrame.new(S.planeX - 2, S.y - (crouched and 2 or 0), S.z) * CFrame.Angles(0, math.pi / 2, 0)
 		pcall(anim.Flip, anim, S.faceLeft)
 
 		-- keep your hidden character inside Sagat so her aim and hitboxes track him
 		if hrp.Parent then
 			hrp.Anchored = true
-			local bodyY = S.crouching and (S.floorY - 3) or (S.y - halfHeight + 3)
+			local bodyY = crouched and (S.floorY - 3) or (S.y - halfHeight + 3)
 			hrp.CFrame = CFrame.new(S.planeX, bodyY, S.z)
 				* CFrame.Angles(0, S.faceLeft and math.pi or 0, 0)
 		end
