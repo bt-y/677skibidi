@@ -14,6 +14,8 @@
 	    her shield, swords, Zundamon) are countered by Sagat with charged shots.
 	  * He jumps over her dashes and lunges, hops over floor spikes, and runs out from
 	    under Zangief when he drops in during her final phase.
+	  * Master Spark: low beam -> he double-jumps over it; high beam -> he crouches.
+	  * Swords: he hits HER with a charged shot, which ends the attack.
 	  * When Sagat wins, Zenithega plays her defeat animation and stays down, and Sagat
 	    walks back to the start of the arena and laughs. Use "Leave fight" to respawn.
 	  * Sagat deals REAL damage to Zenithega through her own TakeDamage: her health bar
@@ -64,7 +66,7 @@ local SOUND = {
 local SPRITES = {
 	"sagat_idle_1", "sagat_walk_1", "sagat_damaged_1", "sagat_laugh_1", "sagat_fall_1",
 	"sagat_jump_1", "sagat_tiger_1", "sagat_sanic_shot_1", "sagat_tiger_uppercut_1",
-	"sagat_knee_attack_1", "sagat_defeated_1",
+	"sagat_knee_attack_1", "sagat_defeated_1", "sagat_roll_1",
 }
 
 local BASE_FPS = 6.666666666
@@ -75,6 +77,7 @@ local POSE = {
 	Damaged  = { sig = "sagat_damaged_1",        loop = false, fps = 10 },
 	Laugh    = { sig = "sagat_laugh_1",          loop = true,  fps = 6.67 },
 	Fall     = { sig = "sagat_fall_1",           loop = true,  fps = 6.67 },
+	Crouch   = { sig = "sagat_roll_1",           loop = true,  fps = 10 },
 	Jump     = { sig = "sagat_jump_1",           loop = true,  fps = 6.67 },
 	Tiger    = { sig = "sagat_tiger_1",          loop = false, fps = 9 },
 	Sanic    = { sig = "sagat_sanic_shot_1",     loop = false, fps = 8 },
@@ -397,6 +400,7 @@ local function createSession(boss, module)
 	-- a charged counter is the only thing allowed to cut an attack short
 	local function mustCounter()
 		return (S.counterPending and not S.countering) or (S.evadePending and not S.evading)
+			or (S.beamPending and not S.beamDodging)
 	end
 
 	local function sleep(t)
@@ -520,6 +524,8 @@ local function createSession(boss, module)
 		S.gravScale = 1
 		S.counterPending = false
 		S.evadePending = false
+		S.beamPending = false
+		S.crouching = false
 		local endDelay = 4
 		if winner == "Sagat" then
 			S.resultText = "SAGAT WINS"
@@ -1047,6 +1053,7 @@ local function createSession(boss, module)
 	local COUNTER_MOVES = {
 		["Heaven's Wrath"] = true, ["Heaven's Wrath (Final)"] = true,
 		["Heal (Final Phase)"] = true, ["Shield"] = true, ["Shield (Final)"] = true,
+		["Swords"] = true, -- only a charged hit on her ends it; otherwise a finisher kills you
 	}
 	-- objects she spawns that a charged hit destroys / stops (Death, swords, Zundamon)
 	local COUNTER_PARTS = { Death = true, breakhitbox = true, hitbox = true }
@@ -1065,7 +1072,7 @@ local function createSession(boss, module)
 		end
 		local hb = zenPart:FindFirstChild("Hitbox")
 		local zenHit = hb and hb:FindFirstChild("hit")
-		if zenHit and (S.counterHits[zenHit] or 0) < 6 then
+		if zenHit then
 			local urgent = false
 			local ok, active = pcall(boss.ReturnActiveMoves, boss)
 			if ok and type(active) == "table" then
@@ -1078,7 +1085,8 @@ local function createSession(boss, module)
 			end
 			local shielded = type(boss.Shield) == "table" and not boss.Shield.Dead
 			if urgent or shielded then
-				list[#list + 1] = { event = zenHit, part = zenPart, isZen = true, urgent = urgent }
+				-- hitting her comes first: it ends the whole attack (swords keep coming otherwise)
+				table.insert(list, 1, { event = zenHit, part = zenPart, isZen = true, urgent = urgent })
 			end
 		end
 		return list
@@ -1213,6 +1221,11 @@ local function createSession(boss, module)
 			end
 		end
 
+		-- 1b) Master Spark coming
+		if names["Obliteration Beam"] and not S.beamDodging and not S.beamPending then
+			S.beamPending = true
+		end
+
 		-- 2) she rushes at him fast
 		if lastZenZ and dt > 0 then
 			local speed = (zz - lastZenZ) / dt
@@ -1256,6 +1269,71 @@ local function createSession(boss, module)
 				S.evadePending = true
 			end
 		end
+	end
+
+	--// Master Spark (Obliteration Beam): it fires straight across at her own height.
+	--// She's standing on the floor -> low beam -> jump over it (keep double-jumping).
+	--// She's floating             -> high beam -> crouch under it.
+	local function beamVisible()
+		local tp = workspace:FindFirstChild("TempPart")
+		if not tp then return false end
+		for _, c in ipairs(tp:GetChildren()) do
+			if c.Name == "evil" or c.Name == "start" or c.Name == "big_smoke" then return true end
+			if c:IsA("BasePart") and math.max(c.Size.X, c.Size.Y, c.Size.Z) > 150 then return true end
+		end
+		return false
+	end
+
+	local function beamActive()
+		return activeMoveNames()["Obliteration Beam"] == true or beamVisible()
+	end
+
+	local function attackBeamDodge()
+		S.beamDodging = true
+		S.beamPending = false
+		plant()
+		setPose("Idle", true)
+		local t0 = os.clock()
+		-- wait until she has taken her spot and starts charging
+		local lastY, lastZ, stillSince = nil, nil, os.clock()
+		while not stopped() and beamActive() and os.clock() - t0 < 8 do
+			if beamVisible() then break end
+			local zy, zz = zenPos()
+			if lastY and (math.abs(zy - lastY) > 0.2 or math.abs(zz - lastZ) > 0.2) then stillSince = os.clock() end
+			lastY, lastZ = zy, zz
+			if os.clock() - t0 > 2.2 and os.clock() - stillSince > 0.4 then break end
+			faceTarget()
+			task.wait()
+		end
+		if not stopped() and beamActive() then
+			local zy = zenPos()
+			local standingY = S.floorY + zenPart.Size.Y / 2
+			if zy > standingY + 2.5 then
+				-- high beam: duck under it until it's gone
+				S.crouching = true
+				setPose("Crouch", true)
+				while not stopped() and beamActive() and os.clock() - t0 < 14 do
+					task.wait()
+				end
+				S.crouching = false
+			else
+				-- low beam: double jump over it and keep hopping while it lasts
+				local safeY = zy + 14 + halfHeight
+				S.vy = CFG.JumpPower
+				setPose("Jump", true)
+				while not stopped() and beamActive() and os.clock() - t0 < 14 do
+					if S.vy < 0 and S.y < safeY then
+						S.vy = CFG.JumpPower * 0.9 -- next (double) jump
+						setPose("Jump", true)
+					end
+					task.wait()
+				end
+				setPose("Fall", true)
+				waitLanding(3)
+			end
+		end
+		S.crouching = false
+		S.beamDodging = false
 	end
 
 	local function attackEvade()
@@ -1390,13 +1468,14 @@ local function createSession(boss, module)
 	S.conns[#S.conns + 1] = RunService.RenderStepped:Connect(function(dt)
 		if not S.alive then return end
 		physics(dt)
-		part.CFrame = CFrame.new(S.planeX - 2, S.y, S.z) * CFrame.Angles(0, math.pi / 2, 0)
+		part.CFrame = CFrame.new(S.planeX - 2, S.y - (S.crouching and 2 or 0), S.z) * CFrame.Angles(0, math.pi / 2, 0)
 		pcall(anim.Flip, anim, S.faceLeft)
 
 		-- keep your hidden character inside Sagat so her aim and hitboxes track him
 		if hrp.Parent then
 			hrp.Anchored = true
-			hrp.CFrame = CFrame.new(S.planeX, S.y - halfHeight + 3, S.z)
+			local bodyY = S.crouching and (S.floorY - 3) or (S.y - halfHeight + 3)
+			hrp.CFrame = CFrame.new(S.planeX, bodyY, S.z)
 				* CFrame.Angles(0, S.faceLeft and math.pi or 0, 0)
 		end
 		hideTimer = hideTimer + dt
@@ -1445,6 +1524,8 @@ local function createSession(boss, module)
 
 				if S.evadePending then
 					move = attackEvade
+				elseif S.beamPending then
+					move = attackBeamDodge
 				elseif S.counterPending or #findCounterTargets() > 0 then
 					move = attackCounter
 				elseif dz < 14 and math.abs(dy) < 12 and last ~= attackUppercut then
@@ -1484,15 +1565,17 @@ local function createSession(boss, module)
 				if stopped() then break end
 				if S.evadePending then
 					move = attackEvade
+				elseif S.beamPending then
+					move = attackBeamDodge
 				elseif S.counterPending and move ~= attackCounter then
 					move = attackCounter
 				end
-				if move ~= attackCounter and move ~= attackEvade then last = move end
+				if move ~= attackCounter and move ~= attackEvade and move ~= attackBeamDodge then last = move end
 				S.gravScale = 1
 				runAttack(move)
 				S.gravScale = 1
 				if stopped() then break end
-				if not S.counterPending and not S.evadePending then
+				if not S.counterPending and not S.evadePending and not S.beamPending then
 					sleep(0.5 + math.random() * 0.4)
 				end
 			end
