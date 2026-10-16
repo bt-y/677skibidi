@@ -1114,10 +1114,12 @@ local function createSession(boss, module)
 	local function findCounterTargets()
 		local list = {}
 		local tempPart = workspace:FindFirstChild("TempPart")
+		local swordsOut = false
 		if tempPart then
 			for _, d in ipairs(tempPart:GetDescendants()) do
 				if d:IsA("BindableEvent") and d.Name == "hit" and d.Parent and d.Parent:IsA("BasePart")
 					and COUNTER_PARTS[d.Parent.Name] and (S.counterHits[d] or 0) < 4 then
+					if d.Parent.Name == "breakhitbox" then swordsOut = true end
 					list[#list + 1] = { event = d, part = d.Parent, urgent = true }
 				end
 			end
@@ -1125,14 +1127,18 @@ local function createSession(boss, module)
 		local hb = zenPart:FindFirstChild("Hitbox")
 		local zenHit = hb and hb:FindFirstChild("hit")
 		if zenHit then
-			local urgent = false
+			local urgent = swordsOut -- ice swords out: only a charged hit on HER ends that attack
+			local current = {}
 			local ok, active = pcall(boss.ReturnActiveMoves, boss)
 			if ok and type(active) == "table" then
-				for _, mv in ipairs(active) do
-					if COUNTER_MOVES[mv.name] and not string.find(mv.name, "Shield", 1, true) then
-						urgent = true
-						break
-					end
+				for _, mv in ipairs(active) do current[#current + 1] = mv end
+			end
+			local cur = boss.States and boss.States.Move
+			if type(cur) == "table" then current[#current + 1] = cur end
+			for _, mv in ipairs(current) do
+				if mv.name and COUNTER_MOVES[mv.name] and not string.find(mv.name, "Shield", 1, true) then
+					urgent = true
+					break
 				end
 			end
 			local shielded = type(boss.Shield) == "table" and not boss.Shield.Dead
@@ -1180,7 +1186,7 @@ local function createSession(boss, module)
 		while not stopped() and shots < 8 do
 			local targets = findCounterTargets()
 			if #targets == 0 then break end
-			local t = targets[1]
+			local t = targets[1] -- she comes first whenever hitting her ends the attack
 			S.vz = 0
 			S.faceLeft = t.part.Position.Z < S.z
 			setPose("Tiger", true)
@@ -1232,6 +1238,10 @@ local function createSession(boss, module)
 				if mv.name then names[mv.name] = true end
 			end
 		end
+		-- many of her attacks never flag themselves "active"; the move runner's
+		-- current move is the reliable source
+		local cur = boss.States and boss.States.Move
+		if type(cur) == "table" and cur.name then names[cur.name] = true end
 		return names
 	end
 
@@ -1570,7 +1580,7 @@ local function createSession(boss, module)
 		setPose("Walk", true)
 		while not stopped() and math.abs(S.z - wallZ) > 0.8 and os.clock() - t0 < 3 do
 			S.faceLeft = wallZ < S.z
-			S.vz = (wallZ > S.z and 1 or -1) * CFG.WalkSpeed * 2.2
+			S.vz = (wallZ > S.z and 1 or -1) * 110 -- dash
 			task.wait()
 		end
 		S.vz = 0
@@ -1578,7 +1588,7 @@ local function createSession(boss, module)
 		S.gravScale = 0
 		setPose("Jump", true)
 		while not stopped() and S.y < topY and os.clock() - t0 < 6 do
-			S.vy = 75 -- scramble up the wall
+			S.vy = 140 -- scramble up the wall
 			task.wait()
 		end
 		S.vy = 0
