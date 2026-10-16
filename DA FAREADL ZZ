@@ -12,6 +12,10 @@
 	    floats out of reach he leaps up to her height and hits her in the air.
 	  * Attacks that must be stopped with a charged shot (Death, Heaven's Wrath, her heal,
 	    her shield, swords, Zundamon) are countered by Sagat with charged shots.
+	  * He jumps over her dashes and lunges, hops over floor spikes, and runs out from
+	    under Zangief when he drops in during her final phase.
+	  * When Sagat wins, Zenithega plays her defeat animation and stays down, and Sagat
+	    walks back to the start of the arena and laughs. Use "Leave fight" to respawn.
 	  * Sagat deals REAL damage to Zenithega through her own TakeDamage: her health bar
 	    drops and she goes into phase 2 and her final phase normally.
 	  * The killing blow is never dealt: when a final-phase hit would finish her, Sagat
@@ -108,6 +112,12 @@ local function topOf(p)
 	return p.Position.Y + ext / 2
 end
 
+-- world-space depth (Z) of a part, for hazards in the 2D lane
+local function zExtent(p)
+	local cf, s = p.CFrame, p.Size
+	return math.abs(cf.RightVector.Z) * s.X + math.abs(cf.UpVector.Z) * s.Y + math.abs(cf.LookVector.Z) * s.Z
+end
+
 --// Game access
 local function getZenithegaModule()
 	local ps = LP:FindFirstChild("PlayerScripts")
@@ -185,7 +195,48 @@ local function lockHealth(boss)
 	boss.TakeDamage = function() end
 end
 
+-- After Sagat wins she is frozen in her defeat pose until the fight ends. Her real
+-- defeat routine (which reports the stage clear) is never run.
+local FrozenConn = nil
+local FrozenBoss = nil
+
+local function freezeBoss(boss)
+	if FrozenConn then return end
+	FrozenBoss = boss
+	pcall(function()
+		if boss.States.Move and boss.States.Move.cancel then boss.States.Move.cancel:Destroy() end
+	end)
+	pcall(function()
+		if boss.moveCancel then boss.moveCancel:Destroy() end
+	end)
+	local tp = workspace:FindFirstChild("TempPart")
+	if tp then
+		for _, c in ipairs(tp:GetChildren()) do
+			if c:GetAttribute("ZProjectile") then pcall(game.Destroy, c) end
+		end
+	end
+	FrozenConn = RunService.Heartbeat:Connect(function()
+		boss.disabled = true
+		boss.canMove = false
+		boss.canTeleport = false
+	end)
+end
+
+local function unfreezeBoss()
+	if FrozenConn then
+		FrozenConn:Disconnect()
+		FrozenConn = nil
+	end
+	if FrozenBoss then
+		FrozenBoss.disabled = false
+		FrozenBoss.canMove = true
+		FrozenBoss.canTeleport = true
+		FrozenBoss = nil
+	end
+end
+
 local function unlockHealth()
+	unfreezeBoss()
 	if not HealthLock then return end
 	local boss = HealthLock.boss
 	boss.TakeDamage = HealthLock.orig
@@ -260,6 +311,16 @@ local function createSession(boss, module)
 	S.zMaxHp = boss.MaxHealth or 110000
 	S.zHp = boss.Health or S.zMaxHp
 
+	-- preload Sagat's projectile images so they never show up blank
+	task.spawn(function()
+		local list = {}
+		for _, n in ipairs({ "TigerShot", "OmegaShot", "SanicShot" }) do
+			local t = objects:FindFirstChild(n)
+			if t then list[#list + 1] = t end
+		end
+		pcall(function() game:GetService("ContentProvider"):PreloadAsync(list) end)
+	end)
+
 	--// containers
 	S.fx = Instance.new("Folder")
 	S.fx.Name = "BossBrawlFX"
@@ -315,13 +376,18 @@ local function createSession(boss, module)
 		if not def then return end
 		if S.pose == name and not force then return end
 		S.pose = name
-		pcall(function()
+		local ok = pcall(function()
 			anim:Stop()
 			anim:Play({
 				AnimationSignature = def.sig, Type = "Sprites",
 				Once = not def.loop, FPS = def.fps, FrameTime = def.ft,
 			})
 		end)
+		if not ok then
+			pcall(function()
+				anim:Play({ AnimationSignature = def.sig, Type = "Sprites", Once = not def.loop, FPS = def.fps })
+			end)
+		end
 	end
 
 	local function stopped()
@@ -330,7 +396,7 @@ local function createSession(boss, module)
 
 	-- a charged counter is the only thing allowed to cut an attack short
 	local function mustCounter()
-		return S.counterPending and not S.countering
+		return (S.counterPending and not S.countering) or (S.evadePending and not S.evading)
 	end
 
 	local function sleep(t)
@@ -451,16 +517,21 @@ local function createSession(boss, module)
 		S.over = true
 		S.busy = false
 		S.vz = 0
+		S.gravScale = 1
+		S.counterPending = false
+		S.evadePending = false
+		local endDelay = 4
 		if winner == "Sagat" then
-			setPose("Laugh", true)
-			playSound(SOUND.LAUGH, 1)
 			S.resultText = "SAGAT WINS"
+			endDelay = 8
+			task.spawn(function() pcall(S.zenithegaDefeat) end)
+			task.spawn(function() pcall(S.walkHome) end)
 		else
 			S.resultText = "ZENITHEGA WINS"
 		end
 		resultLabel.Text = S.resultText
-		setStatus(S.resultText .. " - you get control back in 4s")
-		task.delay(4, function()
+		setStatus(S.resultText .. " - you get control back in " .. endDelay .. "s")
+		task.delay(endDelay, function()
 			if Session == S then
 				Finished = true
 				endSession()
@@ -646,6 +717,18 @@ local function createSession(boss, module)
 		p.CastShadow = false
 		p.Parent = S.fx
 		local sg = p:FindFirstChildOfClass("SurfaceGui")
+		if sg then
+			sg.Enabled = true
+			sg.AlwaysOnTop = true -- never hidden behind the arena
+			sg.LightInfluence = 0
+			sg.Face = Enum.NormalId.Left
+			for _, img in ipairs(sg:GetDescendants()) do
+				if img:IsA("ImageLabel") then
+					img.Visible = true
+					img.ImageTransparency = 0
+				end
+			end
+		end
 		local proj = {
 			part = p, label = sg and sg:FindFirstChildWhichIsA("ImageLabel"), kind = kind,
 			y = y, z = z, vy = vy, vz = vz, g = gravity or 0,
@@ -965,6 +1048,8 @@ local function createSession(boss, module)
 		["Heaven's Wrath"] = true, ["Heaven's Wrath (Final)"] = true,
 		["Heal (Final Phase)"] = true, ["Shield"] = true, ["Shield (Final)"] = true,
 	}
+	-- objects she spawns that a charged hit destroys / stops (Death, swords, Zundamon)
+	local COUNTER_PARTS = { Death = true, breakhitbox = true, hitbox = true }
 	S.counterHits = setmetatable({}, { __mode = "k" })
 
 	local function findCounterTargets()
@@ -973,25 +1058,27 @@ local function createSession(boss, module)
 		if tempPart then
 			for _, d in ipairs(tempPart:GetDescendants()) do
 				if d:IsA("BindableEvent") and d.Name == "hit" and d.Parent and d.Parent:IsA("BasePart")
-					and (S.counterHits[d] or 0) < 4 then
-					list[#list + 1] = { event = d, part = d.Parent }
+					and COUNTER_PARTS[d.Parent.Name] and (S.counterHits[d] or 0) < 4 then
+					list[#list + 1] = { event = d, part = d.Parent, urgent = true }
 				end
 			end
 		end
 		local hb = zenPart:FindFirstChild("Hitbox")
 		local zenHit = hb and hb:FindFirstChild("hit")
 		if zenHit and (S.counterHits[zenHit] or 0) < 6 then
-			local need = type(boss.Shield) == "table" and not boss.Shield.Dead
-			if not need then
-				local ok, active = pcall(boss.ReturnActiveMoves, boss)
-				if ok and type(active) == "table" then
-					for _, mv in ipairs(active) do
-						if COUNTER_MOVES[mv.name] then need = true break end
+			local urgent = false
+			local ok, active = pcall(boss.ReturnActiveMoves, boss)
+			if ok and type(active) == "table" then
+				for _, mv in ipairs(active) do
+					if COUNTER_MOVES[mv.name] and not string.find(mv.name, "Shield", 1, true) then
+						urgent = true
+						break
 					end
 				end
 			end
-			if need then
-				list[#list + 1] = { event = zenHit, part = zenPart, isZen = true }
+			local shielded = type(boss.Shield) == "table" and not boss.Shield.Dead
+			if urgent or shielded then
+				list[#list + 1] = { event = zenHit, part = zenPart, isZen = true, urgent = urgent }
 			end
 		end
 		return list
@@ -1049,6 +1136,193 @@ local function createSession(boss, module)
 		S.countering = false
 		S.counterPending = false
 		S.counterCooldown = os.clock() + 0.6
+	end
+
+	--// Dodging: jump her dashes and rushes, hop over spikes, run out from under Zangief
+	local DASH_MOVES = { ["Super Dash"] = 0.85, ["Jumping Kick"] = 0, ["Crouch Attack"] = 0, ["Destructor"] = 0 }
+	S.moveSeen = {}
+	local lastZenZ, lastJumpAt = nil, 0
+
+	local function jumpNow()
+		if not S.grounded or os.clock() - lastJumpAt < 0.45 then return end
+		lastJumpAt = os.clock()
+		S.vy = CFG.JumpPower
+		if not S.busy then setPose("Jump", true) end
+	end
+
+	local function activeMoveNames()
+		local names = {}
+		local ok, active = pcall(boss.ReturnActiveMoves, boss)
+		if ok and type(active) == "table" then
+			for _, mv in ipairs(active) do
+				if mv.name then names[mv.name] = true end
+			end
+		end
+		return names
+	end
+
+	local function nearestSpike(range)
+		local tp = workspace:FindFirstChild("TempPart")
+		if not tp then return nil end
+		local bestDz, bestGap
+		for _, d in ipairs(tp:GetDescendants()) do
+			if d:IsA("BasePart") and string.find(string.lower(d.Name), "spike", 1, true)
+				and not d:GetAttribute("Broken") and not (d.Parent and d.Parent:GetAttribute("Broken")) then
+				-- only spikes that have risen out of the floor
+				if topOf(d) > S.floorY + 0.75 and d.Position.Y < S.floorY + 20 then
+					local dz = d.Position.Z - S.z
+					local gap = math.abs(dz) - zExtent(d) / 2
+					if gap < range and (not bestGap or gap < bestGap) then
+						bestDz, bestGap = dz, gap
+					end
+				end
+			end
+		end
+		return bestDz, bestGap
+	end
+
+	local function findZangief()
+		local zg = workspace:FindFirstChild("Zangeif")
+		if zg and zg:IsA("BasePart") then
+			return zg, zg:FindFirstChild("destruction hitbox")
+		end
+	end
+
+	local function dodgeReflex(dt)
+		local now = os.clock()
+		local zy, zz = zenPos()
+
+		-- 1) her dashes and melee lunges
+		local names = activeMoveNames()
+		for name, delay in pairs(DASH_MOVES) do
+			if names[name] then
+				local seen = S.moveSeen[name]
+				if not seen then
+					seen = { start = now, jumped = false }
+					S.moveSeen[name] = seen
+				end
+				if not seen.jumped then
+					local close = math.abs(zz - S.z) < 18 and math.abs(zy - S.y) < 12
+					if (delay > 0 and now - seen.start >= delay) or (delay == 0 and close) then
+						seen.jumped = true
+						jumpNow()
+					end
+				end
+			else
+				S.moveSeen[name] = nil
+			end
+		end
+
+		-- 2) she rushes at him fast
+		if lastZenZ and dt > 0 then
+			local speed = (zz - lastZenZ) / dt
+			if (S.z - zz) * speed > 0 and math.abs(speed) > 45 and math.abs(zz - S.z) < 25 and math.abs(zy - S.y) < 12 then
+				jumpNow()
+			end
+		end
+		lastZenZ = zz
+
+		-- 3) spikes in the floor: hop over the one ahead (or the one under him)
+		if S.grounded then
+			local dz, gap = nearestSpike(2.5 + math.abs(S.vz) * 0.3)
+			if dz and (dz * S.vz > 0 or gap < 1.5) then
+				jumpNow()
+			end
+		end
+
+		-- 4) Zangief dropping from the roof: get out from under him
+		local zg, hb = findZangief()
+		if zg and not S.evading and not S.evadePending then
+			local half = zExtent(hb or zg) / 2 + 6
+			local gz = zg.Position.Z
+			if math.abs(S.z - gz) < half then
+				local leftZ, rightZ = gz - half - 2, gz + half + 2
+				local leftOk, rightOk = leftZ >= S.minZ, rightZ <= S.maxZ
+				local target
+				if leftOk and rightOk then
+					-- go to the other side from where she is, so he keeps facing her
+					target = (zz < gz) and rightZ or leftZ
+					if math.abs(target - S.z) > half * 2.5 then
+						target = (math.abs(leftZ - S.z) < math.abs(rightZ - S.z)) and leftZ or rightZ
+					end
+				elseif leftOk then
+					target = leftZ
+				elseif rightOk then
+					target = rightZ
+				else
+					target = (gz - S.minZ > S.maxZ - gz) and S.minZ or S.maxZ
+				end
+				S.evadeZ = target
+				S.evadePending = true
+			end
+		end
+	end
+
+	local function attackEvade()
+		S.evading = true
+		S.evadePending = false
+		setPose("Walk", true)
+		local t0 = os.clock()
+		while not stopped() and os.clock() - t0 < 4 do
+			local target = S.evadeZ
+			if not target or math.abs(S.z - target) < 1 then break end
+			S.faceLeft = target < S.z
+			S.vz = (target > S.z and 1 or -1) * CFG.WalkSpeed * 1.5
+			task.wait()
+		end
+		S.vz = 0
+		S.evading = false
+	end
+
+	--// Victory: Zenithega's defeat animation, then Sagat walks back to the start
+	S.zenithegaDefeat = function()
+		freezeBoss(boss)
+		pcall(boss.PlaySound, boss, "Z KO")
+		if realBar then realBar.Size = UDim2.fromScale(0, 1) end
+		local za = boss.Animators and boss.Animators.Zenithega
+		local function play(sig, once, fps)
+			if za then
+				pcall(function()
+					za:Play({ AnimationSignature = sig, Type = "Sprites", Once = once, FPS = fps })
+				end)
+			end
+		end
+		play("zng_defeated_1", true, 10)
+		local restY = S.floorY + zenPart.Size.Y / 2
+		if zenPart.Position.Y > restY + 0.5 then
+			local tw = TweenService:Create(zenPart, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				CFrame = zenPart.CFrame - Vector3.new(0, zenPart.Position.Y - restY, 0),
+			})
+			tw:Play()
+			tw.Completed:Wait()
+			play("zng_defeatland_1", true, 10)
+			task.wait(0.5)
+		else
+			task.wait(1)
+		end
+		play("zng_defeatloop_1", false, 7)
+	end
+
+	S.walkHome = function()
+		local t0 = os.clock()
+		while S.alive and not S.grounded and os.clock() - t0 < 3 do task.wait() end
+		if not S.alive then return end
+		setPose("Idle", true)
+		task.wait(0.6)
+		local homeZ = math.clamp(playerSpawn and playerSpawn.Position.Z or (S.minZ + 18), S.minZ, S.maxZ)
+		setPose("Walk", true)
+		t0 = os.clock()
+		while S.alive and math.abs(S.z - homeZ) > 1 and os.clock() - t0 < 6 do
+			S.faceLeft = homeZ < S.z
+			S.vz = (homeZ > S.z and 1 or -1) * CFG.WalkSpeed
+			task.wait()
+		end
+		S.vz = 0
+		if not S.alive then return end
+		local _, tz = zenPos()
+		S.faceLeft = tz < S.z
+		setPose("Laugh", true)
+		playSound(SOUND.LAUGH, 1)
 	end
 
 	local function walkTo(targetDist, maxTime)
@@ -1141,8 +1415,15 @@ local function createSession(boss, module)
 		if counterTimer >= 0.15 then
 			counterTimer = 0
 			if not S.countering and not S.over and os.clock() >= (S.counterCooldown or 0) then
-				S.counterPending = #findCounterTargets() > 0
+				local urgent = false
+				for _, t in ipairs(findCounterTargets()) do
+					if t.urgent then urgent = true break end
+				end
+				S.counterPending = urgent -- only urgent ones may interrupt an attack
 			end
+		end
+		if not S.over and not S.dead then
+			dodgeReflex(dt)
 		end
 	end)
 
@@ -1162,7 +1443,9 @@ local function createSession(boss, module)
 				local dz, dy = math.abs(tz - S.z), ty - S.y
 				local move
 
-				if S.counterPending then
+				if S.evadePending then
+					move = attackEvade
+				elseif S.counterPending or #findCounterTargets() > 0 then
 					move = attackCounter
 				elseif dz < 14 and math.abs(dy) < 12 and last ~= attackUppercut then
 					move = attackUppercut
@@ -1199,15 +1482,17 @@ local function createSession(boss, module)
 				end
 
 				if stopped() then break end
-				if S.counterPending and move ~= attackCounter then
+				if S.evadePending then
+					move = attackEvade
+				elseif S.counterPending and move ~= attackCounter then
 					move = attackCounter
 				end
-				if move ~= attackCounter then last = move end
+				if move ~= attackCounter and move ~= attackEvade then last = move end
 				S.gravScale = 1
 				runAttack(move)
 				S.gravScale = 1
 				if stopped() then break end
-				if not S.counterPending then
+				if not S.counterPending and not S.evadePending then
 					sleep(0.5 + math.random() * 0.4)
 				end
 			end
@@ -1290,7 +1575,7 @@ Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 Gui.Parent = PlayerGui
 
 local Panel = Instance.new("Frame")
-Panel.Size = UDim2.new(0, 260, 0, 294)
+Panel.Size = UDim2.new(0, 260, 0, 330)
 Panel.AnchorPoint = Vector2.new(1, 0)
 Panel.Position = UDim2.new(1, -24, 0, 24)
 Panel.BackgroundColor3 = Color3.fromRGB(18, 16, 24)
@@ -1396,10 +1681,11 @@ local sagatDmgBox = makeField("Sagat -> Z dmg", 112, CFG.SagatDamage)
 local zenDmgBox = makeField("Z -> Sagat dmg", 142, CFG.ZenithegaDamage)
 local healButton = makeButton("Heal Sagat", 178, Green)
 local stopButton = makeButton("End brawl now", 214, Red)
+local leaveButton = makeButton("Leave fight (respawn)", 250, Dark)
 
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -24, 0, 36)
-StatusLabel.Position = UDim2.new(0, 12, 0, 252)
+StatusLabel.Position = UDim2.new(0, 12, 0, 288)
 StatusLabel.BackgroundTransparency = 1
 StatusLabel.TextWrapped = true
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1466,6 +1752,16 @@ stopButton.MouseButton1Click:Connect(function()
 		endSession()
 		setStatus("Brawl ended - you have control again")
 	end
+end)
+
+leaveButton.MouseButton1Click:Connect(function()
+	if Session then
+		Finished = true
+		endSession()
+	end
+	local c = LP.Character
+	local h = c and c:FindFirstChildOfClass("Humanoid")
+	if h then h.Health = 0 end
 end)
 
 local function destroyAll()
