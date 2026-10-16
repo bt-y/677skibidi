@@ -19,8 +19,10 @@
 	  * He parries her shockwaves, shoots her apples down (and double-jumps to drag them
 	    up when they get close), and climbs the wall to dodge the opening laser.
 	  * Final phase: infinite jumps - he flies up to her and fights her in the air.
-	  * When Sagat wins, Zenithega plays her defeat animation and stays down, and Sagat
-	    walks back to the start of the arena and laughs. Use "Leave fight" to respawn.
+	  * When Sagat wins: Zenithega's defeat animation, then the game's ending look - the
+	    arena fades in a white flash, the world goes white and black, and Sagat comes down
+	    where the fight started. The fight is then reset so you can start it again.
+	    (No stage clear / boss soul / exit door - that stays for beating her yourself.)
 	  * Sagat deals REAL damage to Zenithega through her own TakeDamage: her health bar
 	    drops and she goes into phase 2 and her final phase normally.
 	  * The killing blow is never dealt: when a final-phase hit would finish her, Sagat
@@ -243,7 +245,52 @@ local function unfreezeBoss()
 	end
 end
 
-local function unlockHealth()
+-- where the fight starts (the game's own intro position)
+local function getStartCFrame(module)
+	local ok, cfg = pcall(function() return require(module:FindFirstChild("Configs")) end)
+	local cf = ok and type(cfg) == "table" and cfg.General and cfg.General.IntroSequence
+		and cfg.General.IntroSequence.PlayerCFrame
+	if typeof(cf) == "CFrame" then return cf end
+	return nil
+end
+
+local function switchTo3D()
+	pcall(function()
+		require(ReplicatedStorage.ClientContainer.Gameplay.PerspectiveService):Set3d(nil, true)
+	end)
+end
+
+local unlockHealth -- defined below
+
+-- Put the fight back to "not started" with the game's own ResetBoss, and clear the
+-- phase flags a finished brawl can leave behind, so the next fight starts normally.
+local function resetFightAfterBrawl(boss)
+	if not boss then return end
+	unlockHealth()
+	pcall(function() workspace.ClientGlobalState:SetAttribute("BackgroundTrack", "none") end)
+	-- ResetBoss can yield for a while, so run it on its own and don't wait for it forever
+	local done = false
+	task.spawn(function()
+		local ok, err = pcall(boss.ResetBoss, boss)
+		if not ok then warn("[BossBrawl] ResetBoss: " .. tostring(err)) end
+		done = true
+	end)
+	local t0 = os.clock()
+	while not done and os.clock() - t0 < 2 do task.wait() end
+	boss.FinalPhaseActive = nil
+	boss.SecondPhaseActive = nil
+	boss.CannotTakeDamage = nil
+	boss.UrGoingToDieNow = nil
+	boss.DeathTimer = nil
+	boss.Dead = false
+	boss.Health = boss.MaxHealth or 110000
+	boss.disabled = false
+	boss.canMove = true
+	boss.canTeleport = true
+	if GameShared.inBattle then GameShared.inBattle = false end
+end
+
+function unlockHealth()
 	unfreezeBoss()
 	if not HealthLock then return end
 	local boss = HealthLock.boss
@@ -538,12 +585,22 @@ local function createSession(boss, module)
 		local endDelay = 4
 		if winner == "Sagat" then
 			S.resultText = "SAGAT WINS"
-			endDelay = 8
+			resultLabel.Text = S.resultText
+			setStatus("SAGAT WINS - victory scene playing")
 			task.spawn(function() pcall(S.zenithegaDefeat) end)
-			task.spawn(function() pcall(S.walkHome) end)
-		else
-			S.resultText = "ZENITHEGA WINS"
+			task.spawn(function()
+				local ok, err = pcall(S.victoryCutscene)
+				if not ok then warn("[BossBrawl] victory scene: " .. tostring(err)) end
+				if Session == S then
+					Finished = true
+					endSession()
+				end
+				resetFightAfterBrawl(boss)
+				setStatus("SAGAT WINS - fight reset, you can start it again")
+			end)
+			return
 		end
+		S.resultText = "ZENITHEGA WINS"
 		resultLabel.Text = S.resultText
 		setStatus(S.resultText .. " - you get control back in " .. endDelay .. "s")
 		task.delay(endDelay, function()
@@ -672,7 +729,7 @@ local function createSession(boss, module)
 		if cgs then cgs:SetAttribute("parry_state", false) end
 		if hrp.Parent then
 			hrp.Anchored = wasAnchored
-			hrp.CFrame = CFrame.new(S.planeX, S.floorY + 3, S.z)
+			hrp.CFrame = S.exitCFrame or CFrame.new(S.planeX, S.floorY + 3, S.z)
 		end
 		setHidden(false)
 	end
@@ -1791,6 +1848,127 @@ local function createSession(boss, module)
 		playSound(SOUND.LAUGH, 1)
 	end
 
+	--// Victory scene, modelled on the game's own ending: the arena fades away in a white
+	--// flash, the world goes white and black, and Sagat comes down where the fight began.
+	--// (The real ending also reports the clear, drops the boss soul and opens the exit -
+	--// none of that is done here.)
+	S.victoryCutscene = function()
+		task.wait(2.5) -- let her defeat animation play first
+
+		local startCF = getStartCFrame(module) or CFrame.new(S.planeX, S.floorY + 3, S.z)
+
+		-- hide the HUD like the real ending (keep the brawl panel and result text)
+		local hiddenGuis = {}
+		for _, g in ipairs(PlayerGui:GetChildren()) do
+			if g:IsA("ScreenGui") and g.Enabled and g.Name ~= "Frames" and g.Name ~= "ComboEffect"
+				and g.Name ~= "BossBrawlPanel" and g.Name ~= "BossBrawlHUD" then
+				g.Enabled = false
+				hiddenGuis[#hiddenGuis + 1] = g
+			end
+		end
+		S.restore[#S.restore + 1] = function()
+			for _, g in ipairs(hiddenGuis) do pcall(function() g.Enabled = true end) end
+		end
+
+		-- white rays over the background + her black silhouette
+		local bg = boss.background
+		local rays
+		if bg then
+			rays = Instance.new("ImageLabel")
+			rays.Image = "rbxassetid://132155326"
+			rays.Rotation = 50
+			rays.ImageTransparency = 1
+			rays.BackgroundTransparency = 1
+			rays.Size = UDim2.fromScale(1000, 1000)
+			rays.AnchorPoint = Vector2.new(0.5, 0.5)
+			rays.Position = UDim2.fromScale(0.5, 0.5)
+			rays.ZIndex = 99999
+			rays.Parent = bg
+			local inner = rays:Clone()
+			inner.Rotation = -50
+			inner.Size = UDim2.fromScale(1, 1)
+			inner.Parent = rays
+			S.restore[#S.restore + 1] = function() pcall(game.Destroy, rays) end
+			pcall(function()
+				TweenService:Create(bg, TweenInfo.new(0.5, Enum.EasingStyle.Sine), { Brightness = 2 }):Play()
+			end)
+			TweenService:Create(rays, TweenInfo.new(1, Enum.EasingStyle.Sine), { ImageTransparency = 0 }):Play()
+			TweenService:Create(inner, TweenInfo.new(1, Enum.EasingStyle.Sine), { ImageTransparency = 0 }):Play()
+		end
+		local zl = zenPart:FindFirstChild("SurfaceGui") and zenPart.SurfaceGui:FindFirstChild("ImageLabel")
+		local sil
+		if zl then
+			sil = zl:Clone()
+			sil.ImageTransparency = 1
+			sil.ImageColor3 = Color3.new(0, 0, 0)
+			sil.Parent = zl.Parent
+			S.restore[#S.restore + 1] = function() pcall(game.Destroy, sil) end
+			TweenService:Create(sil, TweenInfo.new(1, Enum.EasingStyle.Sine), { ImageTransparency = 0 }):Play()
+		end
+		if boss.healthBar then
+			pcall(function()
+				TweenService:Create(boss.healthBar, TweenInfo.new(2, Enum.EasingStyle.Sine), {
+					Position = UDim2.fromScale(0.5, -1),
+				}):Play()
+			end)
+		end
+
+		-- the arena (and Sagat with it) fades away
+		for _, d in ipairs(zone:GetDescendants()) do
+			if d:IsA("BasePart") then
+				TweenService:Create(d, TweenInfo.new(2, Enum.EasingStyle.Sine), { Transparency = 1 }):Play()
+			end
+		end
+		TweenService:Create(label, TweenInfo.new(2, Enum.EasingStyle.Sine), { ImageTransparency = 1 }):Play()
+		task.wait(1.5)
+		if zl then zl.ImageTransparency = 1 end
+		if sil then TweenService:Create(sil, TweenInfo.new(1, Enum.EasingStyle.Sine), { ImageTransparency = 1 }):Play() end
+		task.wait(2)
+		if bg then pcall(function() bg.Enabled = false end) end
+		pcall(game.Destroy, rays)
+		pcall(game.Destroy, sil)
+
+		-- white world, normal 3D camera
+		local cam = workspace.CurrentCamera
+		pcall(function() cam.FieldOfView = 70 end)
+		if boss.Connections and boss.Connections.CameraUpdate then
+			pcall(function() boss.Connections.CameraUpdate:Disconnect() end)
+			boss.Connections.CameraUpdate = nil
+		end
+		local white = objects:FindFirstChild("whiteworld") and objects.whiteworld:Clone()
+		if white then
+			white.Parent = PlayerGui
+			S.restore[#S.restore + 1] = function() pcall(game.Destroy, white) end
+		end
+		switchTo3D()
+
+		-- Sagat comes down where the fight started (you stay hidden inside him)
+		S.cutscene = true
+		S.exitCFrame = startCF
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then cam.CameraSubject = hum end
+		local vf = white and white:FindFirstChildWhichIsA("ViewportFrame")
+		if vf then
+			TweenService:Create(vf, TweenInfo.new(3, Enum.EasingStyle.Sine), { BackgroundTransparency = 1 }):Play()
+		end
+		label.ImageTransparency = 0
+		setPose("Fall", true)
+		local t0 = os.clock()
+		while true do
+			local a = math.min((os.clock() - t0) / 3, 1)
+			local e = 1 - (1 - a) * (1 - a)
+			local cf = startCF * CFrame.new(0, 50 * (1 - e), 0)
+			if hrp.Parent then hrp.CFrame = cf end
+			part.CFrame = CFrame.new(cf.Position + Vector3.new(0, halfHeight - 3, 0)) * CFrame.Angles(0, math.pi / 2, 0)
+			if a >= 1 then break end
+			RunService.RenderStepped:Wait()
+		end
+		setPose("Laugh", true)
+		playSound(SOUND.LAUGH, 1)
+		task.wait(3.5)
+		pcall(game.Destroy, white)
+	end
+
 	local function walkTo(targetDist, maxTime)
 		waitLanding(2)
 		setPose("Walk")
@@ -1857,7 +2035,7 @@ local function createSession(boss, module)
 
 	local scanTimer, hideTimer, counterTimer, fruitTimer = 0, 0, 0, 0
 	S.conns[#S.conns + 1] = RunService.RenderStepped:Connect(function(dt)
-		if not S.alive then return end
+		if not S.alive or S.cutscene then return end
 		physics(dt)
 		local crouched = S.crouching or (S.duckUntil ~= nil and os.clock() < S.duckUntil)
 		part.CFrame = CFrame.new(S.planeX - 2, S.y - (crouched and 2 or 0), S.z) * CFrame.Angles(0, math.pi / 2, 0)
@@ -2189,7 +2367,7 @@ local sagatDmgBox = makeField("Sagat -> Z dmg", 112, CFG.SagatDamage)
 local zenDmgBox = makeField("Z -> Sagat dmg", 142, CFG.ZenithegaDamage)
 local healButton = makeButton("Heal Sagat", 178, Green)
 local stopButton = makeButton("End brawl now", 214, Red)
-local leaveButton = makeButton("Leave fight (respawn)", 250, Dark)
+local leaveButton = makeButton("Leave fight (reset it)", 250, Dark)
 
 local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, -24, 0, 36)
@@ -2263,13 +2441,25 @@ stopButton.MouseButton1Click:Connect(function()
 end)
 
 leaveButton.MouseButton1Click:Connect(function()
+	local boss, module = getBoss()
 	if Session then
 		Finished = true
 		endSession()
 	end
+	if not (boss and fightIsRunning(boss)) then
+		setStatus("No Zenithega fight running")
+		return
+	end
+	resetFightAfterBrawl(boss)
+	switchTo3D()
+	local cf = module and getStartCFrame(module)
 	local c = LP.Character
-	local h = c and c:FindFirstChildOfClass("Humanoid")
-	if h then h.Health = 0 end
+	local root = c and c:FindFirstChild("HumanoidRootPart")
+	if root and cf then
+		root.Anchored = false
+		root.CFrame = cf
+	end
+	setStatus("Left the fight - start it again whenever you like")
 end)
 
 local function destroyAll()
