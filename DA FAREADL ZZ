@@ -54,7 +54,7 @@ local CFG = {
 	JumpPower = 72,
 	Gravity = 150,
 	HitCooldown = 0.35,            -- Sagat's invulnerability window after each hit
-	WallClimbHeight = 40,          -- how high he climbs the wall to dodge the opening laser
+	WallClimbHeight = 200,         -- max climb for the opening laser (he stops at the ceiling)
 }
 
 local SOUND = {
@@ -1324,7 +1324,8 @@ local function createSession(boss, module)
 		end
 
 		-- 1b) Master Spark coming
-		if names["Obliteration Beam"] and not S.beamDodging and not S.beamPending then
+		if (names["Obliteration Beam"] or (not names["Intro"] and S.soundPlaying and S.soundPlaying("Master Spark Charge")))
+			and not S.beamDodging and not S.beamPending then
 			S.beamPending = true
 		end
 
@@ -1355,15 +1356,20 @@ local function createSession(boss, module)
 				if not nearestD or d < nearestD then nearestD = d end
 			end
 		end
-		if nearestD and nearestD < 14 then
-			jumpNow(true)
+		if nearestD then
+			if S.grounded and nearestD < 45 then
+				jumpNow(false) -- first jump: pull them up
+			elseif not S.grounded and S.vy < 10 and nearestD < 35 then
+				jumpNow(true) -- double jump at the top so they fly past underneath
+			end
 		end
 		if #S.fruits > 0 and not S.fruiting and not S.fruitPending then
 			S.fruitPending = true
 		end
 
 		-- 6) her opening laser (in the starter attack): climb the wall
-		if names["Intro"] and S.beamVisible and S.beamVisible() and not S.climbing and not S.climbPending then
+		if names["Intro"] and not S.climbing and not S.climbPending
+			and ((S.soundPlaying and S.soundPlaying("Master Spark")) or (S.beamVisible and S.beamVisible())) then
 			S.climbPending = true
 		end
 
@@ -1398,6 +1404,34 @@ local function createSession(boss, module)
 	--// Master Spark (Obliteration Beam): it fires straight across at her own height.
 	--// She's standing on the floor -> low beam -> jump over it (keep double-jumping).
 	--// She's floating             -> high beam -> crouch under it.
+	-- her own sound effects are the earliest warning ("Master Spark Charge", "... Charge Up")
+	local function soundPlaying(namePart)
+		for _, c in ipairs(SoundService:GetChildren()) do
+			if c:IsA("Sound") and c.IsPlaying and string.find(c.Name, namePart, 1, true) then
+				return true
+			end
+		end
+		return false
+	end
+	S.soundPlaying = soundPlaying
+
+	-- the biggest beam part on screen, with its vertical extent (bottom, top)
+	local function beamBounds()
+		local tp = workspace:FindFirstChild("TempPart")
+		if not tp then return nil end
+		local best, bestLen
+		for _, d in ipairs(tp:GetDescendants()) do
+			if d:IsA("BasePart") then
+				local len = math.max(d.Size.X, d.Size.Y, d.Size.Z)
+				if len > 150 and (not bestLen or len > bestLen) then best, bestLen = d, len end
+			end
+		end
+		if not best then return nil end
+		local cf, sz = best.CFrame, best.Size
+		local ext = math.abs(cf.RightVector.Y) * sz.X + math.abs(cf.UpVector.Y) * sz.Y + math.abs(cf.LookVector.Y) * sz.Z
+		return best.Position.Y - ext / 2, best.Position.Y + ext / 2
+	end
+
 	local function beamVisible()
 		local tp = workspace:FindFirstChild("TempPart")
 		if not tp then return false end
@@ -1411,7 +1445,7 @@ local function createSession(boss, module)
 	S.beamVisible = beamVisible
 
 	local function beamActive()
-		return activeMoveNames()["Obliteration Beam"] == true or beamVisible()
+		return activeMoveNames()["Obliteration Beam"] == true or beamVisible() or soundPlaying("Master Spark")
 	end
 
 	local function attackBeamDodge()
@@ -1423,7 +1457,7 @@ local function createSession(boss, module)
 		-- wait until she has taken her spot and starts charging
 		local lastY, lastZ, stillSince = nil, nil, os.clock()
 		while not stopped() and beamActive() and os.clock() - t0 < 8 do
-			if beamVisible() then break end
+			if beamVisible() or soundPlaying("Master Spark Charge Up") then break end
 			local zy, zz = zenPos()
 			if lastY and (math.abs(zy - lastY) > 0.2 or math.abs(zz - lastZ) > 0.2) then stillSince = os.clock() end
 			lastY, lastZ = zy, zz
@@ -1444,10 +1478,12 @@ local function createSession(boss, module)
 				S.crouching = false
 			else
 				-- low beam: double jump over it and keep hopping while it lasts
-				local safeY = zy + 14 + halfHeight
 				S.vy = CFG.JumpPower
 				setPose("Jump", true)
 				while not stopped() and beamActive() and os.clock() - t0 < 14 do
+					local safeY = zy + 14 + halfHeight
+					local _, top = beamBounds()
+					if top then safeY = math.max(safeY, top + halfHeight + 1) end
 					if S.vy < 0 and S.y < safeY then
 						S.vy = CFG.JumpPower * 0.9 -- next (double) jump
 						setPose("Jump", true)
@@ -1508,39 +1544,61 @@ local function createSession(boss, module)
 		S.fruiting = false
 	end
 
-	-- opening laser: run to the nearest wall and climb it until the laser is over
+	-- opening laser: it's a cone that starts at her and widens away from her, so the safe
+	-- spot is high up on the wall on HER side. Run there, climb to the ceiling, hold on.
+	local function ceilingY(z)
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = { zone }
+		local hit = workspace:Raycast(Vector3.new(S.planeX, S.floorY + 6, z), Vector3.new(0, 400, 0), params)
+		local top = S.floorY + CFG.WallClimbHeight
+		if hit then top = math.min(top, hit.Position.Y - halfHeight - 1) end
+		return top
+	end
+
+	local function laserStillThere()
+		return beamVisible() or soundPlaying("Master Spark")
+	end
+
 	local function attackWallClimb()
 		S.climbing = true
 		S.climbPending = false
-		local wallZ = (math.abs(S.z - S.minZ) <= math.abs(S.z - S.maxZ)) and S.minZ or S.maxZ
-		setPose("Walk", true)
+		local _, zz = zenPos()
+		local wallZ = (math.abs(zz - S.minZ) <= math.abs(zz - S.maxZ)) and S.minZ or S.maxZ
 		local t0 = os.clock()
+		-- sprint (jumping along the way is faster than walking)
+		setPose("Walk", true)
 		while not stopped() and math.abs(S.z - wallZ) > 0.8 and os.clock() - t0 < 3 do
 			S.faceLeft = wallZ < S.z
-			S.vz = (wallZ > S.z and 1 or -1) * CFG.WalkSpeed * 1.6
+			S.vz = (wallZ > S.z and 1 or -1) * CFG.WalkSpeed * 2.2
 			task.wait()
 		end
 		S.vz = 0
-		local topY = S.floorY + CFG.WallClimbHeight
-		local roof = zone:FindFirstChild("roof")
-		if roof and roof:IsA("BasePart") then
-			topY = math.min(topY, roof.Position.Y - roof.Size.Y / 2 - halfHeight - 2)
-		end
+		local topY = ceilingY(wallZ)
 		S.gravScale = 0
 		setPose("Jump", true)
 		while not stopped() and S.y < topY and os.clock() - t0 < 6 do
-			S.vy = 32 -- climbing
+			S.vy = 75 -- scramble up the wall
 			task.wait()
 		end
 		S.vy = 0
+		S.faceLeft = zz < S.z
 		setPose("Idle", true)
-		while not stopped() and S.beamVisible() and os.clock() - t0 < 16 do
-			S.vy = 0 -- holding on to the wall
+		local holdStart = os.clock()
+		local quietSince = nil
+		while not stopped() and os.clock() - t0 < 20 do
+			S.vy = 0 -- hanging on the wall
+			if laserStillThere() then
+				quietSince = nil
+			else
+				quietSince = quietSince or os.clock()
+				if os.clock() - holdStart > 1.5 and os.clock() - quietSince > 0.6 then break end
+			end
 			task.wait()
 		end
 		S.gravScale = 1
 		setPose("Fall", true)
-		waitLanding(4)
+		waitLanding(5)
 		S.climbing = false
 	end
 
