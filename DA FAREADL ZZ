@@ -313,8 +313,52 @@ end
 local unlockHealth -- defined below
 
 -- Put the fight back to "not started" with the game's own ResetBoss.
+-- The fight starts when you touch its "Trigger" part. After a brawl you are put back at
+-- the start spot, so the trigger is switched off until you have walked away from it;
+-- otherwise the whole fight (intro included) would start again by itself.
+local function findFightTrigger(boss)
+	local places = {}
+	pcall(function() places[#places + 1] = boss.Zenithega.Parent end) -- the BossFight folder
+	pcall(function() places[#places + 1] = boss.zenithega_zone end)
+	pcall(function() places[#places + 1] = workspace.Map.Stage.Stage6 end)
+	for _, p in ipairs(places) do
+		if p then
+			local t = p:FindFirstChild("Trigger", true)
+			if t and t:IsA("BasePart") then return t end
+		end
+	end
+	return nil
+end
+
+local function pauseFightTrigger(boss)
+	local trigger = findFightTrigger(boss)
+	if not trigger or trigger:GetAttribute("BrawlPaused") then return end
+	trigger:SetAttribute("BrawlPaused", true)
+	local wasTouch = trigger.CanTouch
+	trigger.CanTouch = false
+	task.spawn(function()
+		local t0 = os.clock()
+		while trigger.Parent and os.clock() - t0 < 600 do
+			task.wait(0.25)
+			local c = LP.Character
+			local root = c and c:FindFirstChild("HumanoidRootPart")
+			if root then
+				local rel = trigger.CFrame:PointToObjectSpace(root.Position)
+				local s = trigger.Size / 2 + Vector3.new(6, 6, 6)
+				local outside = math.abs(rel.X) > s.X or math.abs(rel.Y) > s.Y or math.abs(rel.Z) > s.Z
+				if outside and os.clock() - t0 > 1 then break end
+			end
+		end
+		if trigger.Parent then
+			trigger.CanTouch = wasTouch
+			trigger:SetAttribute("BrawlPaused", nil)
+		end
+	end)
+end
+
 local function resetFightAfterBrawl(boss)
 	if not boss then return end
+	pauseFightTrigger(boss)
 	unlockHealth()
 	pcall(function() workspace.ClientGlobalState:SetAttribute("BackgroundTrack", "none") end)
 	local done = false
@@ -736,6 +780,7 @@ local function createSession(boss, module)
 		end
 	end
 	S.hurtBoss = hurtBoss
+	S.forceWin = function() finish("Boss") end -- testing shortcut
 
 	-- his hit on Zenithega: real damage through her own TakeDamage. The killing blow
 	-- is never dealt: when a final-phase hit would finish her, he wins instead.
@@ -1979,12 +2024,32 @@ local function createSession(boss, module)
 		end
 		setPose("Laugh", true)
 		playSound(SOUND.LAUGH, 1)
-		local t1 = os.clock()
-		while os.clock() - t1 < 3.5 do
-			drawBody(startCF.Position + Vector3.new(0, halfHeight - 3, 0))
-			RunService.RenderStepped:Wait()
+		local standPos = startCF.Position + Vector3.new(0, halfHeight - 3, 0)
+		local function hold(t)
+			local t1 = os.clock()
+			while os.clock() - t1 < t do
+				drawBody(standPos)
+				RunService.RenderStepped:Wait()
+			end
 		end
+		hold(1.5)
+		setPose("Idle", true)
+
+		-- the game's own victory screen ("the bloxxer has been beaten") and jingle,
+		-- shown for as long as the real ending shows it. The stage-clear report, the boss
+		-- soul and the exit door are NOT done here.
+		local victory = objects and objects:FindFirstChild("VictoryScreen")
+		if victory then
+			victory = victory:Clone()
+			victory.Parent = PlayerGui
+			S.restore[#S.restore + 1] = function() pcall(game.Destroy, victory) end
+		end
+		pcall(boss.PlaySound, boss, "Boss Victory Jingle")
+		hold(6.5)
 		pcall(game.Destroy, white)
+		if victory then
+			pcall(game.Destroy, victory)
+		end
 	end
 
 	local function walkTo(targetDist, maxTime)
@@ -2541,6 +2606,7 @@ _G.BossBrawl = {
 	Art = ART,
 	Destroy = destroyAll,
 	GetSession = function() return Session end,
+	ForceWin = function() if Session and Session.forceWin then Session.forceWin() end end,
 }
 
 print("[BossBrawl] Loaded - Lord Arieus vs Zenithega")
