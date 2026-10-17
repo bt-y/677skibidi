@@ -15,11 +15,11 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- ==================== CONFIG ====================
-local WEBHOOK = "https://discord.com/api/webhooks/YOUR_WEBHOOK_HERE" -- << put your webhook
+local WEBHOOK = "https://discord.com/api/webhooks/1543307662790361208/WMiA_gC-_0cRlWHIkpuUekH1FjRII5GsCoZ35bIrUVOr60hQEpjdHcxasPH-uGgNfxVb" -- << put your webhook
 
 local ALLOWED_PLACE_IDS = {
 	[11684369582] = true,
-	[118468631822] = true,
+	[18468631822] = true,
 }
 
 local OWNER_NAME = "ddadsqd" -- your account (whitelist for showcase)
