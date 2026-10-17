@@ -1,34 +1,34 @@
 --[[
-	BossBrawl  -  Sagat vs Zenithega  (spectacle version)
+	BossBrawl  -  Lord Arieus vs Zenithega
 	LocalScript / executor script for "I Wanna Test The Game".
 
 	How it works
 	  * Turn the toggle ON and start the Zenithega fight (or turn it on mid-fight).
-	  * Sagat appears at the arena's PlayerSpawn, standing on the floor.
-	  * Your character disappears and rides inside Sagat, so everything Zenithega aims
+	  * Lord Arieus appears at the arena's PlayerSpawn, standing on the floor.
+	  * Your character disappears and rides inside him, so everything Zenithega aims
 	    at you goes to him. You can't be hurt; you get control back when the brawl ends.
-	  * Sagat walks, jumps and uses his own moves: Tiger Shots, Omega Shots, Sanic lobs,
-	    jumping Tiger Shots and the Tiger Uppercut. His shots home in on her, and when she
+	  * He walks, jumps and uses his own moves: rapid shots, big homing shots, lobbed
+	    shots, jumping shots and a rising strike. His shots home in on her, and when she
 	    floats out of reach he leaps up to her height and hits her in the air.
 	  * Attacks that must be stopped with a charged shot (Death, Heaven's Wrath, her heal,
-	    her shield, swords, Zundamon) are countered by Sagat with charged shots.
-	  * He jumps over her dashes and lunges, hops over floor spikes, and runs out from
-	    under Zangief when he drops in during her final phase.
-	  * Master Spark: low beam -> he double-jumps over it; high beam -> he crouches.
-	  * Swords: he hits HER with a charged shot, which ends the attack.
-	  * He parries her shockwaves, shoots her apples down (and double-jumps to drag them
-	    up when they get close), and climbs the wall to dodge the opening laser.
+	    her shield, swords, Zundamon) are countered with charged shots.
+	  * He jumps over her dashes and lunges, hops over floor spikes, runs out from under
+	    Zangief, jumps or ducks Master Spark, parries shockwaves, shoots her apples down
+	    and climbs the wall to dodge the opening laser.
 	  * Final phase: infinite jumps - he flies up to her and fights her in the air.
-	  * When Sagat wins: Zenithega's defeat animation, then the game's ending look - the
-	    arena fades in a white flash, the world goes white and black, and Sagat comes down
-	    where the fight started. The fight is then reset so you can start it again.
+	  * When he wins: Zenithega's defeat animation, then the ending look (white flash,
+	    white world) and he comes down where the fight started. The fight is then reset.
 	    (No stage clear / boss soul / exit door - that stays for beating her yourself.)
-	  * Sagat deals REAL damage to Zenithega through her own TakeDamage: her health bar
-	    drops and she goes into phase 2 and her final phase normally.
-	  * The killing blow is never dealt: when a final-phase hit would finish her, Sagat
-	    wins and she stays alive. Her health stays locked (nobody else can damage her)
-	    until that fight ends, so a brawl fight can't clear the stage. To actually beat
-	    her, fight her normally without the brawl.
+	  * He deals REAL damage to Zenithega through her own TakeDamage, so her phases happen
+	    normally, but the killing blow is never dealt and her health stays locked until
+	    that fight ends, so a brawl fight can't clear the stage.
+
+	Art (all Roblox Decal IDs - the script loads them through rbxthumb, which is what
+	makes decal IDs show up; plain rbxassetid:// stays blank for decals)
+	  ART.Body    - his body
+	  ART.Shot    - attack 1 (rapid shots, lobs, apple shots)
+	  ART.BigShot - attack 2 (big homing shots, charged counters)
+	  Add more later in ART and point an attack at it.
 ]]
 
 local Players = game:GetService("Players")
@@ -47,56 +47,62 @@ if _G.BossBrawl and type(_G.BossBrawl.Destroy) == "function" then
 	pcall(_G.BossBrawl.Destroy)
 end
 
+local BOSS_NAME = "LORD ARIEUS"
+
+--// Art: Decal IDs
+local ART = {
+	Body    = 109686726282406,
+	Shot    = 92112066875722,
+	BigShot = 85528247748669,
+}
+
+-- which way the art is drawn (used to mirror it toward Zenithega / along its flight)
+local ART_FACES_RIGHT = {
+	Body = true,
+	Shot = true,
+	BigShot = true,
+}
+
+local THUMB_RES = 420 -- rbxthumb sizes are exact, so mirroring can use a known resolution
+
+local function artUrl(id)
+	return string.format("rbxthumb://type=Asset&id=%d&w=%d&h=%d", id, THUMB_RES, THUMB_RES)
+end
+
 --// Config (also editable from the panel)
 local CFG = {
-	SagatMaxHealth = 12000,
-	SagatDamage = 1000,            -- Sagat -> Zenithega brawl bar, per hit
-	ZenithegaDamage = 100,         -- Zenithega -> Sagat, per hit
+	BossMaxHealth = 12000,
+	BossDamage = 1000,             -- Lord Arieus -> Zenithega, per hit
+	ZenithegaDamage = 100,         -- Zenithega -> Lord Arieus, per hit
 	WalkSpeed = 25,
 	JumpPower = 72,
 	Gravity = 150,
-	HitCooldown = 0.35,            -- Sagat's invulnerability window after each hit
+	HitCooldown = 0.35,            -- invulnerability window after each hit
 	WallClimbHeight = 200,         -- max climb for the opening laser (he stops at the ceiling)
+	BodyWidth = 11,                -- studs; the art is fitted inside this box
+	BodyHeight = 11,
+	ShotSize = 4,
+	BigShotSize = 6,
 }
 
+-- generic sounds that already exist in the game
 local SOUND = {
-	TIGER = 12291551415,
-	SANIC = 12291552718,
-	LAUGH = 12291929883,
-	DAMAGED = 16519711409,
-	UPPERCUT = 12368217849,
-	KO = 12291551198,
-	OMEGA = 15741599330,
-}
-
-local SPRITES = {
-	"sagat_idle_1", "sagat_walk_1", "sagat_damaged_1", "sagat_laugh_1", "sagat_fall_1",
-	"sagat_jump_1", "sagat_tiger_1", "sagat_sanic_shot_1", "sagat_tiger_uppercut_1",
-	"sagat_knee_attack_1", "sagat_defeated_1", "sagat_roll_1",
-}
-
-local BASE_FPS = 6.666666666
-
-local POSE = {
-	Idle     = { sig = "sagat_idle_1",           loop = true,  fps = 6.67 },
-	Walk     = { sig = "sagat_walk_1",           loop = true,  fps = 10 },
-	Damaged  = { sig = "sagat_damaged_1",        loop = false, fps = 10 },
-	Laugh    = { sig = "sagat_laugh_1",          loop = true,  fps = 6.67 },
-	Fall     = { sig = "sagat_fall_1",           loop = true,  fps = 6.67 },
-	Crouch   = { sig = "sagat_roll_1",           loop = true,  fps = 10 },
-	Jump     = { sig = "sagat_jump_1",           loop = true,  fps = 6.67 },
-	Tiger    = { sig = "sagat_tiger_1",          loop = false, fps = 9 },
-	Sanic    = { sig = "sagat_sanic_shot_1",     loop = false, fps = 8 },
-	Uppercut = { sig = "sagat_tiger_uppercut_1", loop = false, fps = 8,
-		ft = { [1] = BASE_FPS / 1.8, [3] = BASE_FPS / 2 } },
-	Death    = { sig = "sagat_defeated_1",       loop = false, fps = 6.67,
-		ft = { [1] = BASE_FPS / 8, [2] = BASE_FPS, [3] = BASE_FPS / 9, [4] = BASE_FPS / 6 } },
+	SHOT = 12307412801,      -- GunFire
+	BIG = 14300435051,       -- Big Shot
+	LOB = 14273439052,       -- Rocket
+	CHARGE = 13995167493,    -- Charge Up
+	STRIKE = 14826443922,    -- Heavy Damage
+	HURT = 14826439540,      -- Normal Damage
+	LAUGH = 15073941551,     -- Evil Laugh
+	KO = 13759111356,        -- Enemy Death
+	JUMP = 12194021997,      -- DoubleJump
+	PARRY = 15171252772,
 }
 
 local PROJECTILE = {
-	Tiger = { template = "TigerShot", frames = { "rbxassetid://12303472690", "rbxassetid://12303473103" } },
-	Omega = { template = "OmegaShot" },
-	Sanic = { template = "SanicShot", spin = 12 },
+	Tiger = { art = "Shot",    size = "ShotSize" },
+	Omega = { art = "BigShot", size = "BigShotSize" },
+	Sanic = { art = "Shot",    size = "ShotSize", spin = 12 },
 }
 
 -- fallback detection for Zenithega objects that never call DealDamage
@@ -107,12 +113,53 @@ local ATTACK_KEYWORDS = {
 }
 
 local function playSound(id, volume)
+	if not id then return end
 	local s = Instance.new("Sound")
 	s.SoundId = "rbxassetid://" .. tostring(id)
 	s.Volume = volume or 1
 	s.Parent = SoundService
 	s:Play()
 	Debris:AddItem(s, 6)
+end
+
+-- mirror an image label horizontally (known thumbnail resolution)
+local function setMirror(label, mirrored)
+	if mirrored then
+		label.ImageRectOffset = Vector2.new(THUMB_RES, 0)
+		label.ImageRectSize = Vector2.new(-THUMB_RES, THUMB_RES)
+	else
+		label.ImageRectOffset = Vector2.new(0, 0)
+		label.ImageRectSize = Vector2.new(THUMB_RES, THUMB_RES)
+	end
+end
+
+-- a flat sprite part: a thin part with the art on one face
+local function makeSpritePart(name, artKey, width, height, face)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = Vector3.new(width, height, 0.2)
+	p.Transparency = 1
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanTouch = false
+	p.CanQuery = false
+	p.CastShadow = false
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = face
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 50
+	sg.LightInfluence = 0
+	sg.AlwaysOnTop = false
+	sg.Parent = p
+	local img = Instance.new("ImageLabel")
+	img.Name = "Art"
+	img.BackgroundTransparency = 1
+	img.Size = UDim2.fromScale(1, 1)
+	img.ScaleType = Enum.ScaleType.Fit
+	img.Image = artUrl(ART[artKey])
+	img.Parent = sg
+	setMirror(img, false)
+	return p, img, sg
 end
 
 -- world-space top surface of a (possibly rotated) part
@@ -146,14 +193,6 @@ local function getBoss()
 	return nil
 end
 
-local ZenithegaClass
-local function getZenithegaClass()
-	if not ZenithegaClass then
-		ZenithegaClass = require(ReplicatedStorage.ClientContainer.MiscModule.ZenithegaClass)
-	end
-	return ZenithegaClass
-end
-
 local DamageService
 local function getDamageService()
 	if not DamageService then
@@ -182,6 +221,7 @@ local function fightIsRunning(boss)
 		and zone ~= nil and zone.Parent ~= nil
 		and part ~= nil and part.Parent ~= nil and part.Parent.Name == "BossFight"
 		and boss.IntroFinished == true
+		and boss.Dead ~= true
 end
 
 --// Brawl session
@@ -191,21 +231,18 @@ local Enabled = false
 local Finished = false -- a brawl already ran during the current fight
 local setStatus = function() end
 
---// Zenithega's real health: while a brawl fight is on, only Sagat's hits get through.
---// The lock stays until that fight ends, so a fight that had a brawl can't be cleared
---// off the back of Sagat's damage.
+--// Zenithega's real health: while a brawl fight is on, only Lord Arieus' hits get through.
 local HealthLock = nil -- { boss = <boss>, orig = <original TakeDamage> }
 
 local function lockHealth(boss)
 	if HealthLock then return end
-	-- the original is kept on the boss itself so re-running the script never loses it
 	local orig = rawget(boss, "__BrawlOrigTakeDamage") or boss.TakeDamage
 	boss.__BrawlOrigTakeDamage = orig
 	HealthLock = { boss = boss, orig = orig }
 	boss.TakeDamage = function() end
 end
 
--- After Sagat wins she is frozen in her defeat pose until the fight ends. Her real
+-- After he wins she is frozen in her defeat pose until the fight ends. Her real
 -- defeat routine (which reports the stage clear) is never run.
 local FrozenConn = nil
 local FrozenBoss = nil
@@ -262,13 +299,11 @@ end
 
 local unlockHealth -- defined below
 
--- Put the fight back to "not started" with the game's own ResetBoss, and clear the
--- phase flags a finished brawl can leave behind, so the next fight starts normally.
+-- Put the fight back to "not started" with the game's own ResetBoss.
 local function resetFightAfterBrawl(boss)
 	if not boss then return end
 	unlockHealth()
 	pcall(function() workspace.ClientGlobalState:SetAttribute("BackgroundTrack", "none") end)
-	-- ResetBoss can yield for a while, so run it on its own and don't wait for it forever
 	local done = false
 	task.spawn(function()
 		local ok, err = pcall(boss.ResetBoss, boss)
@@ -313,10 +348,6 @@ local function endSession()
 	for i = #S.restore, 1, -1 do
 		pcall(S.restore[i])
 	end
-	if S.anim then
-		pcall(function() S.anim:Stop() end)
-		pcall(function() S.anim:Destroy() end)
-	end
 	if S.fx then pcall(function() S.fx:Destroy() end) end
 	if S.hud then pcall(function() S.hud:Destroy() end) end
 	if not S.resultText then
@@ -328,16 +359,16 @@ local function createSession(boss, module)
 	local zone = boss.zenithega_zone
 	local zenPart = boss.Zenithega
 	local objects = module:FindFirstChild("Objects")
-	if not (zone and zenPart and objects and objects:FindFirstChild("Sagat")) then
-		return nil, "Missing arena / Sagat assets"
+	if not (zone and zenPart) then
+		return nil, "Missing arena"
 	end
 
-	local ZC = getZenithegaClass()
 	local S = {
 		alive = true, dead = false, over = false, busy = false,
 		boss = boss, conns = {}, restore = {}, projectiles = {},
 		waveHit = setmetatable({}, { __mode = "k" }),
-		vy = 0, vz = 0, pose = nil, faceLeft = false, lastHurtSound = 0, lastHurt = 0,
+		vy = 0, vz = 0, pose = "Idle", poseAt = os.clock(), faceLeft = false,
+		lastHurtSound = 0, lastHurt = 0,
 	}
 
 	--// arena numbers
@@ -345,7 +376,8 @@ local function createSession(boss, module)
 	local zenSpawn = zone:FindFirstChild("ZenithegaSpawn")
 	local left, right = zone:FindFirstChild("Left"), zone:FindFirstChild("Right")
 	local floorPart = zone:FindFirstChild("floor_maphitbox")
-	local halfHeight = objects.Sagat.Size.Y / 2
+	local bodyW, bodyH = CFG.BodyWidth, CFG.BodyHeight
+	local halfHeight = bodyH / 2
 
 	S.planeX = (playerSpawn or zenSpawn or zenPart).Position.X
 	S.minZ = (left and left.Position.Z or zenPart.Position.Z - 70) + 4
@@ -361,95 +393,45 @@ local function createSession(boss, module)
 	S.y = S.groundY -- spawn standing on the floor
 	S.z = math.clamp(playerSpawn and playerSpawn.Position.Z or (S.minZ + 18), S.minZ, S.maxZ)
 	S.grounded = true
-	S.maxHp = CFG.SagatMaxHealth
+	S.maxHp = CFG.BossMaxHealth
 	S.hp = S.maxHp
 	S.zMaxHp = boss.MaxHealth or 110000
 	S.zHp = boss.Health or S.zMaxHp
-
-	-- preload Sagat's projectile images so they never show up blank
-	task.spawn(function()
-		local list = {}
-		for _, n in ipairs({ "TigerShot", "OmegaShot", "SanicShot" }) do
-			local t = objects:FindFirstChild(n)
-			if t then list[#list + 1] = t end
-		end
-		pcall(function() game:GetService("ContentProvider"):PreloadAsync(list) end)
-	end)
 
 	--// containers
 	S.fx = Instance.new("Folder")
 	S.fx.Name = "BossBrawlFX"
 	S.fx.Parent = workspace
 
-	--// Sagat sprite part
-	local part = objects.Sagat:Clone()
-	part.Name = "BrawlSagat"
-	for _, child in ipairs(part:GetChildren()) do
-		if child:IsA("Sound") then child:Destroy() end
-	end
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanTouch = false
-	part.CanQuery = false
+	--// Lord Arieus: a flat sprite facing the camera (Front face toward -X)
+	local part, label = makeSpritePart("LordArieus", "Body", bodyW, bodyH, Enum.NormalId.Front)
 	part.CFrame = CFrame.new(S.planeX - 2, S.y, S.z) * CFrame.Angles(0, math.pi / 2, 0)
 	part.Parent = S.fx
 	S.part = part
 
-	local label = part.SurfaceGui.ImageLabel
-	label.Visible = true
-	label.ImageTransparency = 0
-	label.ImageColor3 = Color3.new(1, 1, 1)
-
-	local anim = ZC.Animator.New({
-		Signature = "BossBrawlSagat_" .. tostring(math.floor(os.clock() * 1000)),
-		FPS = BASE_FPS,
-		Parent = label,
-		Size = Vector2.new(192, 148),
-	})
-	S.anim = anim
-
-	for _, name in ipairs(SPRITES) do
-		pcall(function()
-			anim:LoadBufferFromBaked({ AnimationSignature = name, Type = "Sprites" })
-		end)
-	end
-
-	local loadStart = os.clock()
-	repeat
-		local ready = true
-		for _, name in ipairs(SPRITES) do
-			local store = anim.Storages.Sprites[name]
-			if not store or #store == 0 then ready = false break end
+	-- preload the art so nothing shows up blank
+	task.spawn(function()
+		local list = {}
+		for _, id in pairs(ART) do
+			local i = Instance.new("ImageLabel")
+			i.Image = artUrl(id)
+			list[#list + 1] = i
 		end
-		if ready then break end
-		task.wait(0.1)
-	until os.clock() - loadStart > 20 or not S.alive
+		pcall(function() game:GetService("ContentProvider"):PreloadAsync(list) end)
+	end)
 
 	--// helpers
+	-- poses are drawn procedurally (bob, squash, tilt) since there is one body image
 	local function setPose(name, force)
-		local def = POSE[name]
-		if not def then return end
 		if S.pose == name and not force then return end
 		S.pose = name
-		local ok = pcall(function()
-			anim:Stop()
-			anim:Play({
-				AnimationSignature = def.sig, Type = "Sprites",
-				Once = not def.loop, FPS = def.fps, FrameTime = def.ft,
-			})
-		end)
-		if not ok then
-			pcall(function()
-				anim:Play({ AnimationSignature = def.sig, Type = "Sprites", Once = not def.loop, FPS = def.fps })
-			end)
-		end
+		S.poseAt = os.clock()
 	end
 
 	local function stopped()
 		return (not S.alive) or S.dead or S.over
 	end
 
-	-- a charged counter is the only thing allowed to cut an attack short
 	local function mustCounter()
 		return (S.counterPending and not S.countering) or (S.evadePending and not S.evading)
 			or (S.beamPending and not S.beamDodging)
@@ -487,7 +469,56 @@ local function createSession(boss, module)
 		return S.faceLeft and -1 or 1
 	end
 
-	--// HUD: Sagat bar + Zenithega brawl bar
+	-- y offset, squash (height scale) and tilt (degrees, + leans toward his front) per pose
+	local function poseVisual(now)
+		local t = now - S.poseAt
+		local p = S.pose
+		if p == "Idle" then
+			return math.sin(now * 3) * 0.15, 1, 0
+		elseif p == "Walk" then
+			return math.abs(math.sin(now * 10)) * 0.4, 1, 5
+		elseif p == "Jump" then
+			return 0, 1.06, -6
+		elseif p == "Fall" then
+			return 0, 0.97, 6
+		elseif p == "Crouch" then
+			return 0, 0.6, 0
+		elseif p == "Tiger" or p == "Sanic" then
+			local k = math.max(0, 1 - t / 0.18)
+			return 0, 1 + 0.1 * k, 10 * k
+		elseif p == "Uppercut" then
+			local k = math.max(0, 1 - t / 0.5)
+			return 0, 1 + 0.15 * k, -18 * k
+		elseif p == "Damaged" then
+			if t < 0.3 then return 0, 0.95, -8 end
+			return 0, 1, 0
+		elseif p == "Laugh" then
+			return math.abs(math.sin(now * 14)) * 0.3, 1, 0
+		elseif p == "Death" then
+			local k = math.min(t / 0.6, 1)
+			return -k * (halfHeight - 1), 1, -85 * k
+		end
+		return 0, 1, 0
+	end
+
+	-- place the body for this frame (also used during the victory scene)
+	local function drawBody(pos)
+		local now = os.clock()
+		local yOff, sy, tilt = poseVisual(now)
+		local h = bodyH * sy
+		part.Size = Vector3.new(bodyW, h, 0.2)
+		local shake = 0
+		if S.pose == "Damaged" and now - S.poseAt < 0.25 then
+			shake = math.sin(now * 80) * 0.3
+		end
+		-- tilt is in the screen plane; mirror it with his facing
+		local roll = math.rad(tilt) * (S.faceLeft and 1 or -1)
+		part.CFrame = CFrame.new(pos + Vector3.new(0, yOff - (bodyH - h) / 2, shake))
+			* CFrame.Angles(0, math.pi / 2, 0) * CFrame.Angles(0, 0, roll)
+		setMirror(label, S.faceLeft == ART_FACES_RIGHT.Body)
+	end
+
+	--// HUD: Lord Arieus bar (Zenithega keeps her own bar)
 	local hud = Instance.new("ScreenGui")
 	hud.Name = "BossBrawlHUD"
 	hud.ResetOnSpawn = false
@@ -535,13 +566,11 @@ local function createSession(boss, module)
 		return fill, text
 	end
 
-	-- Zenithega's own health bar on screen; her real TakeDamage updates it
 	local realBar = boss.healthBar and boss.healthBar:FindFirstChild("Bar")
 
-	local sFill, sText = makeBar(72, Color3.fromRGB(255, 140, 60), Color3.fromRGB(60, 20, 20), Color3.fromRGB(255, 120, 40))
+	local sFill, sText = makeBar(72, Color3.fromRGB(230, 70, 70), Color3.fromRGB(50, 15, 20), Color3.fromRGB(210, 40, 60))
 	local zFill, zText
 	if not realBar then
-		-- fallback only if her bar can't be found
 		zFill, zText = makeBar(106, Color3.fromRGB(150, 110, 255), Color3.fromRGB(30, 20, 60), Color3.fromRGB(140, 90, 255))
 	end
 
@@ -559,7 +588,7 @@ local function createSession(boss, module)
 
 	local function updateHud()
 		sFill.Size = UDim2.new(math.clamp(S.hp / S.maxHp, 0, 1), 0, 1, 0)
-		sText.Text = string.format("SAGAT   %d / %d", math.ceil(S.hp), S.maxHp)
+		sText.Text = string.format("%s   %d / %d", BOSS_NAME, math.ceil(S.hp), S.maxHp)
 		S.zHp = boss.Health or S.zHp
 		if zFill then
 			zFill.Size = UDim2.new(math.clamp(S.zHp / S.zMaxHp, 0, 1), 0, 1, 0)
@@ -583,10 +612,10 @@ local function createSession(boss, module)
 		S.climbPending = false
 		S.fruitPending = false
 		local endDelay = 4
-		if winner == "Sagat" then
-			S.resultText = "SAGAT WINS"
+		if winner == "Boss" then
+			S.resultText = BOSS_NAME .. " WINS"
 			resultLabel.Text = S.resultText
-			setStatus("SAGAT WINS - victory scene playing")
+			setStatus(S.resultText .. " - victory scene playing")
 			task.spawn(function() pcall(S.zenithegaDefeat) end)
 			task.spawn(function()
 				local ok, err = pcall(S.victoryCutscene)
@@ -596,7 +625,7 @@ local function createSession(boss, module)
 					endSession()
 				end
 				resetFightAfterBrawl(boss)
-				setStatus("SAGAT WINS - fight reset, you can start it again")
+				setStatus(BOSS_NAME .. " WINS - fight reset, you can start it again")
 			end)
 			return
 		end
@@ -637,8 +666,7 @@ local function createSession(boss, module)
 		finish("Zenithega")
 	end
 
-	-- one Zenithega hit on Sagat (shared by every detection path, with i-frames)
-	local function hurtSagat(dmg)
+	local function hurtBoss(dmg)
 		if S.dead or S.over or not S.alive then return end
 		local now = os.clock()
 		if now - S.lastHurt < CFG.HitCooldown then return end
@@ -648,7 +676,7 @@ local function createSession(boss, module)
 		flash(label)
 		if now - S.lastHurtSound > 0.2 then
 			S.lastHurtSound = now
-			playSound(SOUND.DAMAGED, 0.5)
+			playSound(SOUND.HURT, 0.5)
 		end
 		if S.hp <= 0 then
 			die()
@@ -656,26 +684,24 @@ local function createSession(boss, module)
 			setPose("Damaged", true)
 		end
 	end
-	S.hurtSagat = hurtSagat
+	S.hurtBoss = hurtBoss
 
-	-- Sagat hit on Zenithega: real damage through her own TakeDamage, so her health,
-	-- her bar, phase 2 and the final phase all happen normally. The only thing blocked
-	-- is the killing blow: when a final-phase hit would finish her, Sagat wins instead
-	-- and she is left alive.
+	-- his hit on Zenithega: real damage through her own TakeDamage. The killing blow
+	-- is never dealt: when a final-phase hit would finish her, he wins instead.
 	local FINISH_HP = 1
 	local function damageZenithega(dmg)
 		if S.over or not HealthLock then return false end
-		if boss.Dead or boss.CannotTakeDamage then return false end -- phase change in progress
-		if type(boss.Shield) == "table" and not boss.Shield.Dead then return false end -- shielded
+		if boss.Dead or boss.CannotTakeDamage then return false end
+		if type(boss.Shield) == "table" and not boss.Shield.Dead then return false end
 		local health = boss.Health or 0
 		if boss.FinalPhaseActive and health - dmg <= FINISH_HP then
-			finish("Sagat")
+			finish("Boss")
 			return true
 		end
 		local mult = boss.DamageMultiplier
 		if not mult or mult == 0 then mult = 1 end
 		local combo = boss.hitCombo
-		boss.hitCombo = nil -- keep your combo counter out of it
+		boss.hitCombo = nil
 		pcall(HealthLock.orig, boss, dmg / mult, nil, nil, nil, true)
 		boss.hitCombo = combo
 		updateHud()
@@ -683,8 +709,7 @@ local function createSession(boss, module)
 		return true
 	end
 
-	--// Your character disappears and rides inside Sagat, so everything Zenithega
-	--// aims at "you" goes to him. You can't be hurt and get control back afterwards.
+	--// Your character disappears and rides inside him
 	local char = LP.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -734,16 +759,15 @@ local function createSession(boss, module)
 		setHidden(false)
 	end
 
-	-- anything that lowers your health during the brawl becomes a hit on Sagat
 	S.conns[#S.conns + 1] = hum.HealthChanged:Connect(function(h)
 		if not S.alive or S.over then return end
 		if h > 0 and h < hum.MaxHealth then
-			hurtSagat(CFG.ZenithegaDamage)
+			hurtBoss(CFG.ZenithegaDamage)
 			hum.Health = hum.MaxHealth
 		end
 	end)
 
-	--// Hook: hits aimed at your character go to Sagat instead
+	--// Hook: hits aimed at your character go to him instead
 	local DS = getDamageService()
 	local origDeal = DS.DealDamage
 	DS.DealDamage = function(self, targets, info, ...)
@@ -752,7 +776,7 @@ local function createSession(boss, module)
 			if c then
 				if typeof(targets) == "Instance" then
 					if targets == c then
-						hurtSagat(CFG.ZenithegaDamage)
+						hurtBoss(CFG.ZenithegaDamage)
 						return true
 					end
 				elseif type(targets) == "table" and table.find(targets, c) then
@@ -760,7 +784,7 @@ local function createSession(boss, module)
 					for _, t in ipairs(targets) do
 						if t ~= c then rest[#rest + 1] = t end
 					end
-					hurtSagat(CFG.ZenithegaDamage)
+					hurtBoss(CFG.ZenithegaDamage)
 					if #rest == 0 then return true end
 					return origDeal(self, rest, info, ...)
 				end
@@ -774,38 +798,21 @@ local function createSession(boss, module)
 		end
 	end
 
-	--// Her real health: only Sagat's hits from here until this fight ends
 	lockHealth(boss)
 
-	--// projectiles
+	--// projectiles (flat sprites with the attack art, Left face toward the camera)
 	local function spawnProjectile(kind, y, z, vy, vz, life, gravity)
 		local def = PROJECTILE[kind]
-		local template = objects:FindFirstChild(def.template)
-		if not template then return nil end
-		local p = template:Clone()
-		p.Anchored = true
-		p.CanCollide = false
-		p.CanTouch = false
-		p.CanQuery = false
-		p.CastShadow = false
+		local size = CFG[def.size]
+		local p, img, sg = makeSpritePart("BrawlShot", def.art, size, size, Enum.NormalId.Left)
+		p.Size = Vector3.new(0.2, size, size)
+		sg.AlwaysOnTop = true -- never hidden behind the arena
+		p.CFrame = CFrame.new(S.planeX - 1.5, y, z)
 		p.Parent = S.fx
-		local sg = p:FindFirstChildOfClass("SurfaceGui")
-		if sg then
-			sg.Enabled = true
-			sg.AlwaysOnTop = true -- never hidden behind the arena
-			sg.LightInfluence = 0
-			sg.Face = Enum.NormalId.Left
-			for _, img in ipairs(sg:GetDescendants()) do
-				if img:IsA("ImageLabel") then
-					img.Visible = true
-					img.ImageTransparency = 0
-				end
-			end
-		end
 		local proj = {
-			part = p, label = sg and sg:FindFirstChildWhichIsA("ImageLabel"), kind = kind,
+			part = p, label = img, kind = kind, art = def.art,
 			y = y, z = z, vy = vy, vz = vz, g = gravity or 0,
-			born = os.clock(), life = life, rot = 0, frame = 1, frameAt = os.clock(),
+			born = os.clock(), life = life, rot = 0,
 			spin = def.spin and def.spin * (vz >= 0 and 1 or -1) or nil,
 		}
 		S.projectiles[#S.projectiles + 1] = proj
@@ -817,13 +824,13 @@ local function createSession(boss, module)
 		if proj.label then
 			TweenService:Create(proj.label, TweenInfo.new(0.18), {
 				ImageTransparency = 1, Size = UDim2.fromScale(1.8, 1.8),
+				Position = UDim2.fromScale(-0.4, -0.4),
 			}):Play()
 		end
 		Debris:AddItem(proj.part, 0.25)
 	end
 
-	--// Her apples / fruits: models in TempPart with a "hit" event. Any hit shrinks them;
-	--// enough hits make them explode (same as your pistol shots).
+	--// Her apples / fruits
 	S.fruits = {}
 	local function findFruits()
 		local list = {}
@@ -858,13 +865,34 @@ local function createSession(boss, module)
 	local function hitFruit(f)
 		local h = f and f:FindFirstChild("hit")
 		if h then
-			h:Fire(CFG.SagatDamage, { Damage = CFG.SagatDamage, Type = 1 }, 1, {})
+			h:Fire(CFG.BossDamage, { Damage = CFG.BossDamage, Type = 1 }, 1, {})
 		end
 	end
 
-	-- p.homing  = turn rate (rad/s) toward the target
-	-- p.target  = function returning the target's y, z (nil when it's gone); default is Zenithega
-	-- p.onHit   = what happens on contact with p.target
+	-- the art points along its flight; mirrored when flying left so it stays upright
+	local function orientShot(p)
+		local angle
+		local mirrored
+		if p.spin then
+			angle = p.rot
+			mirrored = false
+		else
+			local goingRight = p.vz >= 0
+			local facesRight = ART_FACES_RIGHT[p.art] ~= false
+			if goingRight then
+				angle = math.atan2(-p.vy, p.vz)
+			else
+				angle = math.atan2(p.vy, -p.vz)
+			end
+			mirrored = (goingRight ~= facesRight)
+		end
+		p.part.CFrame = CFrame.new(S.planeX - 1.5, p.y, p.z) * CFrame.Angles(angle, 0, 0)
+		if p.mirrored ~= mirrored and p.label then
+			p.mirrored = mirrored
+			setMirror(p.label, mirrored)
+		end
+	end
+
 	local function updateProjectiles(dt)
 		local zy, zz = zenPos()
 		local tangible = zenTangible()
@@ -891,24 +919,13 @@ local function createSession(boss, module)
 				p.vy = p.vy - p.g * dt
 				p.y = p.y + p.vy * dt
 				p.z = p.z + p.vz * dt
-				local angle
-				if p.spin then
-					p.rot = p.rot + p.spin * dt
-					angle = p.rot
-				else
-					angle = math.atan2(p.vy, -p.vz)
-				end
-				p.part.CFrame = CFrame.new(S.planeX - 1.5, p.y, p.z) * CFrame.Angles(angle, 0, 0)
-				if p.kind == "Tiger" and p.label and os.clock() - p.frameAt >= 0.1 then
-					p.frameAt = os.clock()
-					p.frame = p.frame % 2 + 1
-					p.label.Image = PROJECTILE.Tiger.frames[p.frame]
-				end
+				if p.spin then p.rot = p.rot + p.spin * dt end
+				orientShot(p)
 
 				local done = false
 				if p.target then
 					if not ty then
-						done = true -- its target is gone
+						done = true
 					elseif math.abs(p.y - ty) < p.hitRadius and math.abs(p.z - tz) < p.hitRadius then
 						done = true
 						if p.onHit then pcall(p.onHit) end
@@ -918,7 +935,7 @@ local function createSession(boss, module)
 					hitFruit(fruitAt(p.y, p.z))
 				elseif tangible and not S.over and math.abs(p.y - zy) < 6.2 and math.abs(p.z - zz) < 4.2 then
 					done = true
-					damageZenithega(CFG.SagatDamage)
+					damageZenithega(CFG.BossDamage)
 				end
 				if done or os.clock() - p.born > p.life or p.y < S.floorY - 4 then
 					explode(p)
@@ -956,7 +973,7 @@ local function createSession(boss, module)
 					local dist = math.sqrt(dy * dy + dz * dz) - pp.Size.X * 0.5
 					if dist < 0.5 then
 						S.waveHit[child] = true
-						hurtSagat(CFG.ZenithegaDamage)
+						hurtBoss(CFG.ZenithegaDamage)
 					end
 				end
 			end
@@ -964,20 +981,20 @@ local function createSession(boss, module)
 
 		overlap.FilterDescendantsInstances = { tempPart }
 		local parts = workspace:GetPartBoundsInBox(
-			CFrame.new(S.planeX, S.y, S.z), Vector3.new(80, 9, 4.5), overlap)
+			CFrame.new(S.planeX, S.y, S.z), Vector3.new(80, bodyH - 0.5, 4.5), overlap)
 		for _, p in ipairs(parts) do
 			local top = p
 			while top.Parent and top.Parent ~= tempPart do
 				top = top.Parent
 			end
 			if top.Parent == tempPart and top.Name ~= "Wave" and isAttackObject(top, p) then
-				hurtSagat(CFG.ZenithegaDamage)
+				hurtBoss(CFG.ZenithegaDamage)
 				if S.dead then return end
 			end
 		end
 	end
 
-	--// Sagat attacks (his own moves, aimed at Zenithega)
+	--// his attacks, aimed at Zenithega
 	local function aimAt(fromY, fromZ)
 		local ty, tz = zenPos()
 		local dy, dz = ty - fromY, tz - fromZ
@@ -985,15 +1002,17 @@ local function createSession(boss, module)
 		return dy / len, dz / len, len
 	end
 
-	local function fireTiger(spread)
-		local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+	local muzzleY, muzzleZ = 1.5, bodyW / 2 - 0.5
+
+	local function fireShot(spread)
+		local sy, sz = S.y + muzzleY, S.z + dirSign() * muzzleZ
 		local dy, dz, dist = aimAt(sy, sz)
 		local angle = math.atan2(dy, dz) + math.rad(math.random(-spread, spread))
 		local speed = 42
 		local proj = spawnProjectile("Tiger", sy, sz, math.sin(angle) * speed, math.cos(angle) * speed,
 			math.min(dist / speed + 2.5, 6), 0)
 		if proj then proj.homing = 3 end
-		playSound(SOUND.TIGER, 0.6)
+		playSound(SOUND.SHOT, 0.5)
 	end
 
 	local function waitLanding(maxTime)
@@ -1003,67 +1022,68 @@ local function createSession(boss, module)
 		end
 	end
 
-	-- every ground attack starts with Sagat standing still on the floor, facing her
 	local function plant()
 		waitLanding(2)
 		S.vz = 0
 		faceTarget()
 	end
 
-	local function attackTigerShot()
+	-- attack 1: a burst of rapid homing shots
+	local function attackRapidShot()
 		plant()
 		setPose("Tiger", true)
-		playSound(SOUND.TIGER)
 		if not sleep(0.35) then return end
 		for i = 1, math.random(5, 8) do
 			if stopped() then return end
 			faceTarget()
 			if i % 2 == 1 then setPose("Tiger", true) end
-			fireTiger(8)
+			fireShot(8)
 			if not sleep(0.28) then return end
 		end
 		sleep(0.25)
 	end
 
-	local function attackOmegaShot()
+	-- attack 2: big slow homing shots
+	local function attackBigShot()
 		plant()
-		playSound(SOUND.OMEGA, 1.5)
+		playSound(SOUND.CHARGE, 0.8)
 		for _ = 1, 4 do
 			if stopped() then return end
 			faceTarget()
 			setPose("Sanic", true)
 			if not sleep(0.25) then return end
-			local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+			local sy, sz = S.y + muzzleY, S.z + dirSign() * muzzleZ
 			local dy, dz, dist = aimAt(sy, sz)
 			local speed = 38
 			local proj = spawnProjectile("Omega", sy, sz, dy * speed, dz * speed, math.min(dist / speed + 2.5, 6), 0)
 			if proj then proj.homing = 2.5 end
+			playSound(SOUND.BIG, 0.7)
 			if not sleep(0.4) then return end
 		end
 		sleep(0.25)
 	end
 
-	local function attackSanic()
+	-- lobbed spinning shots
+	local function attackLob()
 		plant()
 		for _ = 1, 3 do
 			if stopped() then return end
 			faceTarget()
 			setPose("Sanic", true)
 			if not sleep(0.25) then return end
-			local sy, sz = S.y + 1, S.z + dirSign() * 4
+			local sy, sz = S.y + 1, S.z + dirSign() * muzzleZ
 			local ty, tz = zenPos()
 			local g = 110
 			local travel = math.clamp(math.abs(tz - sz) / 45, 0.5, 1.6)
 			local vz = (tz - sz) / travel
 			local vy = (ty - sy + 0.5 * g * travel * travel) / travel
-			playSound(SOUND.SANIC, 0.8)
+			playSound(SOUND.LOB, 0.6)
 			spawnProjectile("Sanic", sy, sz, vy, vz, travel + 1.2, g)
 			if not sleep(0.45) then return end
 		end
 		sleep(0.2)
 	end
 
-	-- a deliberate jump: crouch, leap, shoot at the top of the jump, land
 	local function attackJumpShot()
 		plant()
 		setPose("Jump", true)
@@ -1071,6 +1091,7 @@ local function createSession(boss, module)
 		local _, tz = zenPos()
 		S.vz = (tz > S.z and 1 or -1) * CFG.WalkSpeed * 0.5
 		S.vy = CFG.JumpPower
+		playSound(SOUND.JUMP, 0.5)
 		local t0 = os.clock()
 		while not stopped() and S.vy > 15 and os.clock() - t0 < 1 do
 			task.wait()
@@ -1080,7 +1101,7 @@ local function createSession(boss, module)
 			if stopped() then return end
 			faceTarget()
 			setPose("Tiger", true)
-			fireTiger(5)
+			fireShot(5)
 			if not sleep(0.12) then return end
 		end
 		setPose("Fall", true)
@@ -1088,7 +1109,8 @@ local function createSession(boss, module)
 		sleep(0.2)
 	end
 
-	local function attackUppercut()
+	-- rising strike: dash in and launch upward through her
+	local function attackRisingStrike()
 		plant()
 		setPose("Walk")
 		local t0 = os.clock()
@@ -1102,7 +1124,7 @@ local function createSession(boss, module)
 		if stopped() then return end
 		faceTarget()
 		setPose("Uppercut", true)
-		playSound(SOUND.UPPERCUT)
+		playSound(SOUND.STRIKE, 0.8)
 		S.vy = 75
 		local hitDone = false
 		local riseStart = os.clock()
@@ -1112,7 +1134,7 @@ local function createSession(boss, module)
 				and math.abs(zz - (S.z + dirSign() * 3)) < 8
 				and math.abs(zy - (S.y + 3)) < 11 then
 				hitDone = true
-				damageZenithega(CFG.SagatDamage)
+				damageZenithega(CFG.BossDamage)
 			end
 			task.wait()
 		end
@@ -1130,26 +1152,27 @@ local function createSession(boss, module)
 		S.vy = math.sqrt(2 * CFG.Gravity * h)
 		local tApex = S.vy / CFG.Gravity
 		S.vz = math.clamp((tz - S.z) / math.max(tApex, 0.3) * 0.85, -70, 70)
+		playSound(SOUND.JUMP, 0.5)
 		local t0 = os.clock()
 		while not stopped() and S.vy > 6 and os.clock() - t0 < 2.5 do
 			task.wait()
 		end
 		S.vz = 0
 		if stopped() then return end
-		S.gravScale = 0.12 -- hang in the air for the combo
+		S.gravScale = 0.12
 		local zy, zz = zenPos()
 		if math.abs(zz - S.z) < 10 and math.abs(zy - S.y) < 10 then
 			faceTarget()
 			setPose("Uppercut", true)
-			playSound(SOUND.UPPERCUT)
-			damageZenithega(CFG.SagatDamage)
+			playSound(SOUND.STRIKE, 0.8)
+			damageZenithega(CFG.BossDamage)
 			sleep(0.2)
 		end
 		for _ = 1, 4 do
 			if stopped() then break end
 			faceTarget()
 			setPose("Tiger", true)
-			fireTiger(3)
+			fireShot(3)
 			if not sleep(0.12) then break end
 		end
 		S.gravScale = 1
@@ -1159,13 +1182,11 @@ local function createSession(boss, module)
 	end
 
 	--// Charged counters: the same "charged hit" your pistol / javelin / GGCC deliver.
-	--// It stops Death, Heaven's Wrath, her heal, breaks her shield, swords and Zundamon.
 	local COUNTER_MOVES = {
 		["Heaven's Wrath"] = true, ["Heaven's Wrath (Final)"] = true,
 		["Heal (Final Phase)"] = true, ["Shield"] = true, ["Shield (Final)"] = true,
-		["Swords"] = true, -- only a charged hit on her ends it; otherwise a finisher kills you
+		["Swords"] = true,
 	}
-	-- objects she spawns that a charged hit destroys / stops (Death, swords, Zundamon)
 	local COUNTER_PARTS = { Death = true, breakhitbox = true, hitbox = true }
 	S.counterHits = setmetatable({}, { __mode = "k" })
 
@@ -1185,7 +1206,7 @@ local function createSession(boss, module)
 		local hb = zenPart:FindFirstChild("Hitbox")
 		local zenHit = hb and hb:FindFirstChild("hit")
 		if zenHit then
-			local urgent = swordsOut -- ice swords out: only a charged hit on HER ends that attack
+			local urgent = swordsOut
 			local current = {}
 			local ok, active = pcall(boss.ReturnActiveMoves, boss)
 			if ok and type(active) == "table" then
@@ -1201,7 +1222,6 @@ local function createSession(boss, module)
 			end
 			local shielded = type(boss.Shield) == "table" and not boss.Shield.Dead
 			if urgent or shielded then
-				-- hitting her comes first: it ends the whole attack (swords keep coming otherwise)
 				table.insert(list, 1, { event = zenHit, part = zenPart, isZen = true, urgent = urgent })
 			end
 		end
@@ -1210,14 +1230,14 @@ local function createSession(boss, module)
 	S.findCounterTargets = findCounterTargets
 
 	local function fireCharged(t)
-		local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+		local sy, sz = S.y + muzzleY, S.z + dirSign() * muzzleZ
 		local tp = t.part.Position
 		local dy, dz = tp.Y - sy, tp.Z - sz
 		local len = math.max(math.sqrt(dy * dy + dz * dz), 0.001)
 		local speed = 60
 		local proj = spawnProjectile("Omega", sy, sz, dy / len * speed, dz / len * speed, 4, 0)
 		if not proj then return end
-		pcall(function() proj.part.Size = proj.part.Size * 1.6 end)
+		pcall(function() proj.part.Size = proj.part.Size * 1.4 end)
 		if proj.label then proj.label.ImageColor3 = Color3.fromRGB(255, 220, 90) end
 		proj.homing = 12
 		proj.hitRadius = 4 + math.min(t.part.Size.Magnitude * 0.25, 6)
@@ -1232,10 +1252,10 @@ local function createSession(boss, module)
 		end
 		proj.onHit = function()
 			S.counterHits[t.event] = (S.counterHits[t.event] or 0) + 1
-			t.event:Fire(CFG.SagatDamage, { Charged = true, Damage = CFG.SagatDamage, Type = 1 }, 1, {})
-			if t.isZen then damageZenithega(CFG.SagatDamage) end
+			t.event:Fire(CFG.BossDamage, { Charged = true, Damage = CFG.BossDamage, Type = 1 }, 1, {})
+			if t.isZen then damageZenithega(CFG.BossDamage) end
 		end
-		playSound(SOUND.TIGER, 1)
+		playSound(SOUND.BIG, 1)
 	end
 
 	local function attackCounter()
@@ -1244,12 +1264,12 @@ local function createSession(boss, module)
 		while not stopped() and shots < 8 do
 			local targets = findCounterTargets()
 			if #targets == 0 then break end
-			local t = targets[1] -- she comes first whenever hitting her ends the attack
+			local t = targets[1]
 			S.vz = 0
 			S.faceLeft = t.part.Position.Z < S.z
 			setPose("Tiger", true)
 			label.ImageColor3 = Color3.fromRGB(255, 220, 90) -- charging glow
-			playSound(SOUND.OMEGA, 1)
+			playSound(SOUND.CHARGE, 0.8)
 			if not sleep(0.35) then break end
 			label.ImageColor3 = Color3.new(1, 1, 1)
 			fireCharged(t)
@@ -1262,12 +1282,11 @@ local function createSession(boss, module)
 		S.counterCooldown = os.clock() + 0.6
 	end
 
-	--// Dodging: jump her dashes and rushes, hop over spikes, run out from under Zangief
+	--// Dodging
 	local DASH_MOVES = { ["Super Dash"] = 0.85, ["Jumping Kick"] = 0, ["Crouch Attack"] = 0, ["Destructor"] = 0 }
 	S.moveSeen = {}
 	local lastZenZ, lastJumpAt = nil, 0
 
-	-- one extra jump in the air normally (double jump); unlimited in her final phase
 	local function maxAirJumps()
 		return boss.FinalPhaseActive and math.huge or 1
 	end
@@ -1296,8 +1315,6 @@ local function createSession(boss, module)
 				if mv.name then names[mv.name] = true end
 			end
 		end
-		-- many of her attacks never flag themselves "active"; the move runner's
-		-- current move is the reliable source
 		local cur = boss.States and boss.States.Move
 		if type(cur) == "table" and cur.name then names[cur.name] = true end
 		return names
@@ -1310,7 +1327,6 @@ local function createSession(boss, module)
 		for _, d in ipairs(tp:GetDescendants()) do
 			if d:IsA("BasePart") and string.find(string.lower(d.Name), "spike", 1, true)
 				and not d:GetAttribute("Broken") and not (d.Parent and d.Parent:GetAttribute("Broken")) then
-				-- only spikes that have risen out of the floor
 				if topOf(d) > S.floorY + 0.75 and d.Position.Y < S.floorY + 20 then
 					local dz = d.Position.Z - S.z
 					local gap = math.abs(dz) - zExtent(d) / 2
@@ -1330,9 +1346,7 @@ local function createSession(boss, module)
 		end
 	end
 
-	--// Shockwaves: parry them the way you do - the wave checks the parry state the
-	--// moment it reaches you, so Sagat raises it just before contact.
-	local PARRY_SOUND = 15171252772
+	--// Shockwaves: parried just before contact
 	local function doParry()
 		if cgs then
 			cgs:SetAttribute("parry_state", true)
@@ -1344,7 +1358,7 @@ local function createSession(boss, module)
 		task.delay(0.12, function()
 			if label.Parent then label.ImageColor3 = Color3.new(1, 1, 1) end
 		end)
-		playSound(PARRY_SOUND, 0.8)
+		playSound(SOUND.PARRY, 0.8)
 		S.parries = (S.parries or 0) + 1
 	end
 
@@ -1358,7 +1372,7 @@ local function createSession(boss, module)
 				if pp then
 					local d = (hp - pp.Position).Magnitude - pp.Size.X / 2
 					if d < 3 then
-						S.waveHit[w] = true -- parried: the wave doesn't hurt him
+						S.waveHit[w] = true
 						doParry()
 					end
 				end
@@ -1366,8 +1380,7 @@ local function createSession(boss, module)
 		end
 	end
 
-	--// General dodging: watch every attack object she has out, predict where it's going,
-	--// and jump / double jump, duck, or side-step out of its path.
+	--// General dodging
 	S.prevPos = setmetatable({}, { __mode = "k" })
 	local lastDuck, lastStep = 0, 0
 
@@ -1382,10 +1395,10 @@ local function createSession(boss, module)
 
 	local function isThreat(o)
 		if o.Name == "Wave" or o.Name == "SpikeModel" or COUNTER_PARTS[o.Name] then return false end
-		if o:IsA("Model") and o:FindFirstChild("hit") then return false end -- apples: own system
+		if o:IsA("Model") and o:FindFirstChild("hit") then return false end
 		if o:GetAttribute("ZProjectile") then return true end
 		local n = string.lower(o.Name)
-		if string.find(n, "spike", 1, true) then return false end -- floor spikes: own system
+		if string.find(n, "spike", 1, true) then return false end
 		for _, key in ipairs(ATTACK_KEYWORDS) do
 			if string.find(n, key, 1, true) then return true end
 		end
@@ -1394,18 +1407,16 @@ local function createSession(boss, module)
 
 	local function react(cy, cz, vy, vz, moving, now)
 		if moving and math.abs(vz) >= math.abs(vy) then
-			-- coming across the lane
 			if cy > halfHeight * 0.35 and S.grounded then
 				if now - lastDuck > 0.5 then
 					lastDuck = now
-					S.duckUntil = now + 0.45 -- passing high: duck under it
+					S.duckUntil = now + 0.45
 					if not S.busy then setPose("Crouch", true) end
 				end
 			else
-				jumpNow(true) -- low or at his body: jump / double jump over it
+				jumpNow(true)
 			end
 		elseif now - lastStep > 0.35 then
-			-- dropping on him, or a hazard sitting on him: step aside, away from it
 			lastStep = now
 			local dir = (cz > 0) and -1 or 1
 			if (dir < 0 and S.z < S.minZ + 6) or (dir > 0 and S.z > S.maxZ - 6) then dir = -dir end
@@ -1418,7 +1429,7 @@ local function createSession(boss, module)
 	local function threatScan(dt, now)
 		local tp = workspace:FindFirstChild("TempPart")
 		if not tp or dt <= 0 then return end
-		local hh, hw = halfHeight + 0.5, 2.5
+		local hh, hw = halfHeight + 0.5, bodyW / 4
 		for _, o in ipairs(tp:GetChildren()) do
 			if isThreat(o) then
 				local pos, size = objectBox(o)
@@ -1435,7 +1446,7 @@ local function createSession(boss, module)
 					local moving = sp2 > 25
 					local t = 0
 					if moving then
-						t = math.clamp(-(ry * vy + rz * vz) / sp2, 0, 0.55) -- closest approach soon
+						t = math.clamp(-(ry * vy + rz * vz) / sp2, 0, 0.55)
 					end
 					local cy, cz = ry + vy * t, rz + vz * t
 					local onPath = math.abs(cy) < hh + r and math.abs(cz) < hw + r
@@ -1452,12 +1463,10 @@ local function createSession(boss, module)
 		local now = os.clock()
 		local zy, zz = zenPos()
 
-		-- 0) everything she has flying around
 		if not S.climbing and not S.beamDodging and not S.evading then
 			threatScan(dt, now)
 		end
 
-		-- 1) her dashes and melee lunges
 		local names = activeMoveNames()
 		for name, delay in pairs(DASH_MOVES) do
 			if names[name] then
@@ -1478,13 +1487,11 @@ local function createSession(boss, module)
 			end
 		end
 
-		-- 1b) Master Spark coming
 		if (names["Obliteration Beam"] or (not names["Intro"] and S.soundPlaying and S.soundPlaying("Master Spark Charge")))
 			and not S.beamDodging and not S.beamPending then
 			S.beamPending = true
 		end
 
-		-- 2) she rushes at him fast
 		if lastZenZ and dt > 0 then
 			local speed = (zz - lastZenZ) / dt
 			if (S.z - zz) * speed > 0 and math.abs(speed) > 45 and math.abs(zz - S.z) < 25 and math.abs(zy - S.y) < 12 then
@@ -1493,7 +1500,6 @@ local function createSession(boss, module)
 		end
 		lastZenZ = zz
 
-		-- 3) spikes in the floor: hop over the one ahead (or the one under him)
 		if S.grounded then
 			local dz, gap = nearestSpike(2.5 + math.abs(S.vz) * 0.3)
 			if dz and (dz * S.vz > 0 or gap < 1.5) then
@@ -1501,7 +1507,6 @@ local function createSession(boss, module)
 			end
 		end
 
-		-- 5) apples homing in: jump / double jump so they follow him up instead of hitting him
 		local nearestD
 		for _, f in ipairs(S.fruits) do
 			local pp = f.Parent and f.PrimaryPart
@@ -1513,32 +1518,29 @@ local function createSession(boss, module)
 		end
 		if nearestD then
 			if S.grounded and nearestD < 45 then
-				jumpNow(false) -- first jump: pull them up
+				jumpNow(false)
 			elseif not S.grounded and S.vy < 10 and nearestD < 35 then
-				jumpNow(true) -- double jump at the top so they fly past underneath
+				jumpNow(true)
 			end
 		end
 		if #S.fruits > 0 and not S.fruiting and not S.fruitPending then
 			S.fruitPending = true
 		end
 
-		-- 6) her opening laser (in the starter attack): climb the wall
 		if names["Intro"] and not S.climbing and not S.climbPending
 			and ((S.soundPlaying and S.soundPlaying("Master Spark")) or (S.beamVisible and S.beamVisible())) then
 			S.climbPending = true
 		end
 
-		-- 4) Zangief dropping from the roof: get out from under him
 		local zg, hb = findZangief()
 		if zg and not S.evading and not S.evadePending then
-			local half = zExtent(hb or zg) / 2 + 6
+			local half = zExtent(hb or zg) / 2 + bodyW / 2 + 3
 			local gz = zg.Position.Z
 			if math.abs(S.z - gz) < half then
 				local leftZ, rightZ = gz - half - 2, gz + half + 2
 				local leftOk, rightOk = leftZ >= S.minZ, rightZ <= S.maxZ
 				local target
 				if leftOk and rightOk then
-					-- go to the other side from where she is, so he keeps facing her
 					target = (zz < gz) and rightZ or leftZ
 					if math.abs(target - S.z) > half * 2.5 then
 						target = (math.abs(leftZ - S.z) < math.abs(rightZ - S.z)) and leftZ or rightZ
@@ -1556,10 +1558,7 @@ local function createSession(boss, module)
 		end
 	end
 
-	--// Master Spark (Obliteration Beam): it fires straight across at her own height.
-	--// She's standing on the floor -> low beam -> jump over it (keep double-jumping).
-	--// She's floating             -> high beam -> crouch under it.
-	-- her own sound effects are the earliest warning ("Master Spark Charge", "... Charge Up")
+	--// Master Spark
 	local function soundPlaying(namePart)
 		for _, c in ipairs(SoundService:GetChildren()) do
 			if c:IsA("Sound") and c.IsPlaying and string.find(c.Name, namePart, 1, true) then
@@ -1570,7 +1569,6 @@ local function createSession(boss, module)
 	end
 	S.soundPlaying = soundPlaying
 
-	-- the biggest beam part on screen, with its vertical extent (bottom, top)
 	local function beamBounds()
 		local tp = workspace:FindFirstChild("TempPart")
 		if not tp then return nil end
@@ -1596,7 +1594,6 @@ local function createSession(boss, module)
 		end
 		return false
 	end
-
 	S.beamVisible = beamVisible
 
 	local function beamActive()
@@ -1609,7 +1606,6 @@ local function createSession(boss, module)
 		plant()
 		setPose("Idle", true)
 		local t0 = os.clock()
-		-- wait until she has taken her spot and starts charging
 		local lastY, lastZ, stillSince = nil, nil, os.clock()
 		while not stopped() and beamActive() and os.clock() - t0 < 8 do
 			if beamVisible() or soundPlaying("Master Spark Charge Up") then break end
@@ -1624,7 +1620,6 @@ local function createSession(boss, module)
 			local zy = zenPos()
 			local standingY = S.floorY + zenPart.Size.Y / 2
 			if zy > standingY + 2.5 then
-				-- high beam: duck under it until it's gone
 				S.crouching = true
 				setPose("Crouch", true)
 				while not stopped() and beamActive() and os.clock() - t0 < 14 do
@@ -1632,7 +1627,6 @@ local function createSession(boss, module)
 				end
 				S.crouching = false
 			else
-				-- low beam: double jump over it and keep hopping while it lasts
 				S.vy = CFG.JumpPower
 				setPose("Jump", true)
 				while not stopped() and beamActive() and os.clock() - t0 < 14 do
@@ -1640,7 +1634,7 @@ local function createSession(boss, module)
 					local _, top = beamBounds()
 					if top then safeY = math.max(safeY, top + halfHeight + 1) end
 					if S.vy < 0 and S.y < safeY then
-						S.vy = CFG.JumpPower * 0.9 -- next (double) jump
+						S.vy = CFG.JumpPower * 0.9
 						setPose("Jump", true)
 					end
 					task.wait()
@@ -1653,11 +1647,10 @@ local function createSession(boss, module)
 		S.beamDodging = false
 	end
 
-	-- shoot her apples down (6 hits each), nearest first
 	local function fireAtFruit(m)
 		local pp = m.PrimaryPart
 		if not pp then return end
-		local sy, sz = S.y + 1.5, S.z + dirSign() * 4.5
+		local sy, sz = S.y + muzzleY, S.z + dirSign() * muzzleZ
 		local tp = pp.Position
 		local dy, dz = tp.Y - sy, tp.Z - sz
 		local len = math.max(math.sqrt(dy * dy + dz * dz), 0.001)
@@ -1674,7 +1667,7 @@ local function createSession(boss, module)
 			return nil
 		end
 		proj.onHit = function() hitFruit(m) end
-		playSound(SOUND.TIGER, 0.5)
+		playSound(SOUND.SHOT, 0.4)
 	end
 
 	local function attackFruits()
@@ -1699,8 +1692,6 @@ local function createSession(boss, module)
 		S.fruiting = false
 	end
 
-	-- opening laser: it's a cone that starts at her and widens away from her, so the safe
-	-- spot is high up on the wall on HER side. Run there, climb to the ceiling, hold on.
 	local function ceilingY(z)
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Include
@@ -1721,11 +1712,10 @@ local function createSession(boss, module)
 		local _, zz = zenPos()
 		local wallZ = (math.abs(zz - S.minZ) <= math.abs(zz - S.maxZ)) and S.minZ or S.maxZ
 		local t0 = os.clock()
-		-- sprint (jumping along the way is faster than walking)
 		setPose("Walk", true)
 		while not stopped() and math.abs(S.z - wallZ) > 0.8 and os.clock() - t0 < 3 do
 			S.faceLeft = wallZ < S.z
-			S.vz = (wallZ > S.z and 1 or -1) * 110 -- dash
+			S.vz = (wallZ > S.z and 1 or -1) * 110
 			task.wait()
 		end
 		S.vz = 0
@@ -1733,7 +1723,7 @@ local function createSession(boss, module)
 		S.gravScale = 0
 		setPose("Jump", true)
 		while not stopped() and S.y < topY and os.clock() - t0 < 6 do
-			S.vy = 140 -- scramble up the wall
+			S.vy = 140
 			task.wait()
 		end
 		S.vy = 0
@@ -1742,7 +1732,7 @@ local function createSession(boss, module)
 		local holdStart = os.clock()
 		local quietSince = nil
 		while not stopped() and os.clock() - t0 < 20 do
-			S.vy = 0 -- hanging on the wall
+			S.vy = 0
 			if laserStillThere() then
 				quietSince = nil
 			else
@@ -1757,7 +1747,6 @@ local function createSession(boss, module)
 		S.climbing = false
 	end
 
-	-- final phase: chase her through the air with infinite jumps, shooting on the way
 	local function attackAirChase()
 		local t0 = os.clock()
 		local lastShot = 0
@@ -1772,7 +1761,7 @@ local function createSession(boss, module)
 			if os.clock() - lastShot > 0.28 then
 				lastShot = os.clock()
 				setPose("Tiger", true)
-				fireTiger(3)
+				fireShot(3)
 			end
 			if not sleep(0.03) then break end
 		end
@@ -1797,7 +1786,7 @@ local function createSession(boss, module)
 		S.evading = false
 	end
 
-	--// Victory: Zenithega's defeat animation, then Sagat walks back to the start
+	--// Victory: Zenithega's defeat animation
 	S.zenithegaDefeat = function()
 		freezeBoss(boss)
 		pcall(boss.PlaySound, boss, "Z KO")
@@ -1826,38 +1815,12 @@ local function createSession(boss, module)
 		play("zng_defeatloop_1", false, 7)
 	end
 
-	S.walkHome = function()
-		local t0 = os.clock()
-		while S.alive and not S.grounded and os.clock() - t0 < 3 do task.wait() end
-		if not S.alive then return end
-		setPose("Idle", true)
-		task.wait(0.6)
-		local homeZ = math.clamp(playerSpawn and playerSpawn.Position.Z or (S.minZ + 18), S.minZ, S.maxZ)
-		setPose("Walk", true)
-		t0 = os.clock()
-		while S.alive and math.abs(S.z - homeZ) > 1 and os.clock() - t0 < 6 do
-			S.faceLeft = homeZ < S.z
-			S.vz = (homeZ > S.z and 1 or -1) * CFG.WalkSpeed
-			task.wait()
-		end
-		S.vz = 0
-		if not S.alive then return end
-		local _, tz = zenPos()
-		S.faceLeft = tz < S.z
-		setPose("Laugh", true)
-		playSound(SOUND.LAUGH, 1)
-	end
-
-	--// Victory scene, modelled on the game's own ending: the arena fades away in a white
-	--// flash, the world goes white and black, and Sagat comes down where the fight began.
-	--// (The real ending also reports the clear, drops the boss soul and opens the exit -
-	--// none of that is done here.)
+	--// Victory scene, modelled on the game's own ending
 	S.victoryCutscene = function()
-		task.wait(2.5) -- let her defeat animation play first
+		task.wait(2.5)
 
 		local startCF = getStartCFrame(module) or CFrame.new(S.planeX, S.floorY + 3, S.z)
 
-		-- hide the HUD like the real ending (keep the brawl panel and result text)
 		local hiddenGuis = {}
 		for _, g in ipairs(PlayerGui:GetChildren()) do
 			if g:IsA("ScreenGui") and g.Enabled and g.Name ~= "Frames" and g.Name ~= "ComboEffect"
@@ -1870,7 +1833,6 @@ local function createSession(boss, module)
 			for _, g in ipairs(hiddenGuis) do pcall(function() g.Enabled = true end) end
 		end
 
-		-- white rays over the background + her black silhouette
 		local bg = boss.background
 		local rays
 		if bg then
@@ -1913,7 +1875,6 @@ local function createSession(boss, module)
 			end)
 		end
 
-		-- the arena (and Sagat with it) fades away
 		for _, d in ipairs(zone:GetDescendants()) do
 			if d:IsA("BasePart") then
 				TweenService:Create(d, TweenInfo.new(2, Enum.EasingStyle.Sine), { Transparency = 1 }):Play()
@@ -1928,25 +1889,24 @@ local function createSession(boss, module)
 		pcall(game.Destroy, rays)
 		pcall(game.Destroy, sil)
 
-		-- white world, normal 3D camera
 		local cam = workspace.CurrentCamera
 		pcall(function() cam.FieldOfView = 70 end)
 		if boss.Connections and boss.Connections.CameraUpdate then
 			pcall(function() boss.Connections.CameraUpdate:Disconnect() end)
 			boss.Connections.CameraUpdate = nil
 		end
-		local white = objects:FindFirstChild("whiteworld") and objects.whiteworld:Clone()
+		local white = objects and objects:FindFirstChild("whiteworld") and objects.whiteworld:Clone()
 		if white then
 			white.Parent = PlayerGui
 			S.restore[#S.restore + 1] = function() pcall(game.Destroy, white) end
 		end
 		switchTo3D()
 
-		-- Sagat comes down where the fight started (you stay hidden inside him)
+		-- he comes down where the fight started (you stay hidden inside him)
 		S.cutscene = true
 		S.exitCFrame = startCF
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then cam.CameraSubject = hum end
+		local hum2 = char:FindFirstChildOfClass("Humanoid")
+		if hum2 then cam.CameraSubject = hum2 end
 		local vf = white and white:FindFirstChildWhichIsA("ViewportFrame")
 		if vf then
 			TweenService:Create(vf, TweenInfo.new(3, Enum.EasingStyle.Sine), { BackgroundTransparency = 1 }):Play()
@@ -1959,13 +1919,17 @@ local function createSession(boss, module)
 			local e = 1 - (1 - a) * (1 - a)
 			local cf = startCF * CFrame.new(0, 50 * (1 - e), 0)
 			if hrp.Parent then hrp.CFrame = cf end
-			part.CFrame = CFrame.new(cf.Position + Vector3.new(0, halfHeight - 3, 0)) * CFrame.Angles(0, math.pi / 2, 0)
+			drawBody(cf.Position + Vector3.new(0, halfHeight - 3, 0))
 			if a >= 1 then break end
 			RunService.RenderStepped:Wait()
 		end
 		setPose("Laugh", true)
 		playSound(SOUND.LAUGH, 1)
-		task.wait(3.5)
+		local t1 = os.clock()
+		while os.clock() - t1 < 3.5 do
+			drawBody(startCF.Position + Vector3.new(0, halfHeight - 3, 0))
+			RunService.RenderStepped:Wait()
+		end
 		pcall(game.Destroy, white)
 	end
 
@@ -1982,7 +1946,7 @@ local function createSession(boss, module)
 				S.vz = (dz > 0 and 1 or -1) * CFG.WalkSpeed
 			elseif d < targetDist - 6 then
 				S.vz = (dz > 0 and -1 or 1) * CFG.WalkSpeed
-				if S.z <= S.minZ + 1 or S.z >= S.maxZ - 1 then break end -- cornered
+				if S.z <= S.minZ + 1 or S.z >= S.maxZ - 1 then break end
 			else
 				break
 			end
@@ -1992,7 +1956,6 @@ local function createSession(boss, module)
 		if not stopped() then setPose("Idle") end
 	end
 
-	-- an attack runs start to finish; nothing else can interrupt it
 	local function runAttack(fn)
 		S.busy = true
 		fn()
@@ -2033,15 +1996,54 @@ local function createSession(boss, module)
 		S.z = math.clamp(S.z + vz * dt, S.minZ, S.maxZ)
 	end
 
+	-- Her final phase has a survival timer (DeathTimer); when it runs out the game plays her
+	-- real defeat, which clears the stage. During a brawl that counts as Lord Arieus winning,
+	-- so the timer is taken away just before it fires and the brawl victory plays instead.
+	local function guardDeathTimer()
+		if S.over or S.dead then return end
+		if boss.Dead then
+			-- she died for real anyway: step aside so the game's own ending has your character
+			task.defer(function()
+				if Session == S then
+					Finished = true
+					endSession()
+					setStatus("Zenithega was defeated by the game itself - brawl stopped")
+				end
+			end)
+			S.alive = false
+			return
+		end
+		local dt0 = boss.DeathTimer
+		if type(dt0) == "number" and not boss.UrGoingToDieNow and dt0 - tick() <= 0.6 then
+			boss.DeathTimer = nil
+			finish("Boss")
+		end
+	end
+
 	local scanTimer, hideTimer, counterTimer, fruitTimer = 0, 0, 0, 0
 	S.conns[#S.conns + 1] = RunService.RenderStepped:Connect(function(dt)
 		if not S.alive or S.cutscene then return end
+		guardDeathTimer()
+		if not S.alive then return end
 		physics(dt)
 		local crouched = S.crouching or (S.duckUntil ~= nil and os.clock() < S.duckUntil)
-		part.CFrame = CFrame.new(S.planeX - 2, S.y - (crouched and 2 or 0), S.z) * CFrame.Angles(0, math.pi / 2, 0)
-		pcall(anim.Flip, anim, S.faceLeft)
+		if crouched and S.pose ~= "Crouch" and not S.dead then
+			setPose("Crouch", true)
+		elseif not crouched and S.pose == "Crouch" then
+			setPose(S.grounded and "Idle" or "Fall", true)
+		end
+		-- ground poses follow movement when no attack pose is showing
+		if not S.busy and not S.dead and not S.over and S.pose ~= "Crouch" and S.pose ~= "Damaged" then
+			if not S.grounded then
+				if S.vy < 0 and S.pose == "Jump" then setPose("Fall") end
+			elseif S.pose == "Jump" or S.pose == "Fall" then
+				setPose("Idle")
+			end
+		end
+		if S.pose == "Damaged" and os.clock() - S.poseAt > 0.35 then setPose("Idle") end
+		drawBody(Vector3.new(S.planeX - 2, S.y, S.z))
 
-		-- keep your hidden character inside Sagat so her aim and hitboxes track him
+		-- keep your hidden character inside him so her aim and hitboxes track him
 		if hrp.Parent then
 			hrp.Anchored = true
 			local bodyY = crouched and (S.floorY - 3) or (S.y - halfHeight + 3)
@@ -2077,7 +2079,7 @@ local function createSession(boss, module)
 				for _, t in ipairs(findCounterTargets()) do
 					if t.urgent then urgent = true break end
 				end
-				S.counterPending = urgent -- only urgent ones may interrupt an attack
+				S.counterPending = urgent
 			end
 		end
 		if not S.over and not S.dead then
@@ -2088,10 +2090,11 @@ local function createSession(boss, module)
 	--// brain: one committed move at a time, then a short recovery
 	S.thread = task.spawn(function()
 		local ok, err = pcall(function()
-			setPose("Idle", true)
+			setPose("Laugh", true)
 			faceTarget()
 			playSound(SOUND.LAUGH, 0.8)
 			sleep(0.8)
+			setPose("Idle", true)
 
 			local last = nil
 			while not stopped() do
@@ -2111,33 +2114,30 @@ local function createSession(boss, module)
 					move = attackCounter
 				elseif S.fruitPending or #findFruits() > 0 then
 					move = attackFruits
-				elseif dz < 14 and math.abs(dy) < 12 and last ~= attackUppercut then
-					move = attackUppercut
+				elseif dz < 14 and math.abs(dy) < 12 and last ~= attackRisingStrike then
+					move = attackRisingStrike
 				elseif dy > 15 then
-					-- she's floating out of reach: leap up to her or use homing shots
 					if dz > 70 then
 						S.busy = true
 						walkTo(40, 1.5)
 						S.busy = false
 					end
 					if boss.FinalPhaseActive then
-						-- infinite jumps: fly up to her and fight her in the air
 						move = pickMove({
 							{ attackAirChase, 50 },
-							{ attackTigerShot, 20 },
-							{ attackOmegaShot, 15 },
+							{ attackRapidShot, 20 },
+							{ attackBigShot, 15 },
 							{ attackLeap, 15 },
 						}, last)
 					else
 						move = pickMove({
 							{ attackLeap, 45 },
-							{ attackTigerShot, 25 },
-							{ attackOmegaShot, 20 },
+							{ attackRapidShot, 25 },
+							{ attackBigShot, 20 },
 							{ attackJumpShot, 10 },
 						}, last)
 					end
 				else
-					-- get to a comfortable range first (walking is its own step)
 					if dz > 60 then
 						S.busy = true
 						walkTo(38, 2)
@@ -2148,9 +2148,9 @@ local function createSession(boss, module)
 						S.busy = false
 					end
 					move = pickMove({
-						{ attackTigerShot, 40 },
-						{ attackOmegaShot, 25 },
-						{ attackSanic, 20 },
+						{ attackRapidShot, 40 },
+						{ attackBigShot, 25 },
+						{ attackLob, 20 },
 						{ attackJumpShot, 15 },
 						{ attackAirChase, boss.FinalPhaseActive and 25 or 0 },
 					}, last)
@@ -2184,8 +2184,8 @@ local function createSession(boss, module)
 			end
 		end)
 		if not ok then
-			warn("[BossBrawl] Sagat AI error: " .. tostring(err))
-			setStatus("Sagat AI error (see console)")
+			warn("[BossBrawl] Lord Arieus AI error: " .. tostring(err))
+			setStatus("Lord Arieus AI error (see console)")
 		end
 	end)
 
@@ -2208,18 +2208,19 @@ local function startSession()
 		Starting = false
 		if not ok then
 			err = tostring(S)
+			warn("[BossBrawl] start failed: " .. err)
 			S = nil
 		end
 		if S then
 			Session = S
 			if running and Enabled then
-				setStatus("Brawl active - Sagat vs Zenithega")
+				setStatus("Brawl active - Lord Arieus vs Zenithega")
 			else
 				endSession()
 			end
 		else
-			setStatus(err or "Failed to spawn Sagat")
-			Finished = true -- don't retry every tick; resets when the fight ends
+			setStatus(err or "Failed to spawn Lord Arieus")
+			Finished = true
 		end
 	end)
 end
@@ -2270,7 +2271,7 @@ Panel.Parent = Gui
 Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 10)
 
 local panelStroke = Instance.new("UIStroke", Panel)
-panelStroke.Color = Color3.fromRGB(95, 60, 170)
+panelStroke.Color = Color3.fromRGB(170, 50, 70)
 panelStroke.Thickness = 1.2
 panelStroke.Transparency = 0.35
 
@@ -2278,10 +2279,10 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -44, 0, 36)
 Title.Position = UDim2.new(0, 12, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "Boss Brawl: Sagat vs Zenithega"
-Title.TextColor3 = Color3.fromRGB(210, 185, 255)
+Title.Text = "Boss Brawl: Lord Arieus vs Zenithega"
+Title.TextColor3 = Color3.fromRGB(255, 185, 195)
 Title.Font = Enum.Font.GothamMedium
-Title.TextSize = 13
+Title.TextSize = 12
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Active = true
 Title.Parent = Panel
@@ -2289,16 +2290,16 @@ Title.Parent = Panel
 local Close = Instance.new("TextButton")
 Close.Size = UDim2.new(0, 24, 0, 24)
 Close.Position = UDim2.new(1, -30, 0, 6)
-Close.BackgroundColor3 = Color3.fromRGB(85, 35, 95)
+Close.BackgroundColor3 = Color3.fromRGB(95, 35, 50)
 Close.Text = "×"
-Close.TextColor3 = Color3.fromRGB(255, 220, 255)
+Close.TextColor3 = Color3.fromRGB(255, 220, 230)
 Close.Font = Enum.Font.GothamBold
 Close.TextSize = 16
 Close.Parent = Panel
 Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 6)
 
 local dragConns = {}
-do -- dragging
+do
 	local dragging, dragStart, startPos = false, nil, nil
 	dragConns[#dragConns + 1] = Title.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -2336,7 +2337,7 @@ local function makeField(labelText, y, default)
 	l.Position = UDim2.new(0, 12, 0, y)
 	l.BackgroundTransparency = 1
 	l.Text = labelText
-	l.TextColor3 = Color3.fromRGB(175, 140, 255)
+	l.TextColor3 = Color3.fromRGB(240, 150, 165)
 	l.Font = Enum.Font.Gotham
 	l.TextSize = 12
 	l.TextXAlignment = Enum.TextXAlignment.Left
@@ -2345,9 +2346,9 @@ local function makeField(labelText, y, default)
 	local box = Instance.new("TextBox")
 	box.Size = UDim2.new(0, 86, 0, 26)
 	box.Position = UDim2.new(1, -98, 0, y)
-	box.BackgroundColor3 = Color3.fromRGB(30, 24, 44)
+	box.BackgroundColor3 = Color3.fromRGB(40, 22, 30)
 	box.Text = tostring(default)
-	box.TextColor3 = Color3.fromRGB(220, 205, 255)
+	box.TextColor3 = Color3.fromRGB(255, 215, 220)
 	box.Font = Enum.Font.Gotham
 	box.TextSize = 13
 	box.ClearTextOnFocus = false
@@ -2356,16 +2357,16 @@ local function makeField(labelText, y, default)
 	return box
 end
 
-local Dark = Color3.fromRGB(45, 35, 65)
+local Dark = Color3.fromRGB(55, 30, 42)
 local Green = Color3.fromRGB(50, 140, 95)
-local Orange = Color3.fromRGB(165, 100, 45)
+local Orange = Color3.fromRGB(175, 60, 70)
 local Red = Color3.fromRGB(140, 50, 60)
 
 local toggleButton = makeButton("Brawl: OFF", 44, Dark)
-local hpBox = makeField("Sagat HP", 82, CFG.SagatMaxHealth)
-local sagatDmgBox = makeField("Sagat -> Z dmg", 112, CFG.SagatDamage)
-local zenDmgBox = makeField("Z -> Sagat dmg", 142, CFG.ZenithegaDamage)
-local healButton = makeButton("Heal Sagat", 178, Green)
+local hpBox = makeField("Arieus HP", 82, CFG.BossMaxHealth)
+local bossDmgBox = makeField("Arieus -> Z dmg", 112, CFG.BossDamage)
+local zenDmgBox = makeField("Z -> Arieus dmg", 142, CFG.ZenithegaDamage)
+local healButton = makeButton("Heal Lord Arieus", 178, Green)
 local stopButton = makeButton("End brawl now", 214, Red)
 local leaveButton = makeButton("Leave fight (reset it)", 250, Dark)
 
@@ -2376,7 +2377,7 @@ StatusLabel.BackgroundTransparency = 1
 StatusLabel.TextWrapped = true
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 StatusLabel.TextYAlignment = Enum.TextYAlignment.Top
-StatusLabel.TextColor3 = Color3.fromRGB(160, 145, 200)
+StatusLabel.TextColor3 = Color3.fromRGB(210, 160, 175)
 StatusLabel.Font = Enum.Font.Gotham
 StatusLabel.TextSize = 11
 StatusLabel.Text = "Off"
@@ -2399,14 +2400,14 @@ local function bindNumber(box, key, min, onChange)
 	end)
 end
 
-bindNumber(hpBox, "SagatMaxHealth", 1, function()
+bindNumber(hpBox, "BossMaxHealth", 1, function()
 	if Session and not Session.over then
-		Session.maxHp = CFG.SagatMaxHealth
+		Session.maxHp = CFG.BossMaxHealth
 		Session.hp = Session.maxHp
 		Session.updateHud()
 	end
 end)
-bindNumber(sagatDmgBox, "SagatDamage", 0)
+bindNumber(bossDmgBox, "BossDamage", 0)
 bindNumber(zenDmgBox, "ZenithegaDamage", 0)
 
 local function setEnabled(on)
@@ -2414,7 +2415,7 @@ local function setEnabled(on)
 	toggleButton.Text = on and "Brawl: ON" or "Brawl: OFF"
 	toggleButton.BackgroundColor3 = on and Orange or Dark
 	if on then
-		setStatus("Armed - Sagat joins once the Zenithega fight is running")
+		setStatus("Armed - Lord Arieus joins once the Zenithega fight is running")
 	else
 		if Session then endSession() end
 		setStatus("Off")
@@ -2434,7 +2435,7 @@ end)
 
 stopButton.MouseButton1Click:Connect(function()
 	if Session then
-		Finished = true -- don't restart until this fight ends
+		Finished = true
 		endSession()
 		setStatus("Brawl ended - you have control again")
 	end
@@ -2483,8 +2484,9 @@ _G.BossBrawl = {
 	Enable = function() setEnabled(true) end,
 	Disable = function() setEnabled(false) end,
 	Config = CFG,
+	Art = ART,
 	Destroy = destroyAll,
 	GetSession = function() return Session end,
 }
 
-print("[BossBrawl] Loaded - Sagat vs Zenithega (spectacle)")
+print("[BossBrawl] Loaded - Lord Arieus vs Zenithega")
