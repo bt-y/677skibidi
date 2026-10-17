@@ -25,7 +25,9 @@
 
 	Art (all Roblox Decal IDs - the script loads them through rbxthumb, which is what
 	makes decal IDs show up; plain rbxassetid:// stays blank for decals)
-	  ART.Body    - his body
+	  ANIM.Walk   - 8 walk frames (also used for standing still: Walk 1)
+	  ANIM.Jump   - 4 jump frames: take-off, rising, top, falling
+	  ART.Body    - his original body image (only shown for the first moment)
 	  ART.Shot    - attack 1 (rapid shots, lobs, apple shots)
 	  ART.BigShot - attack 2 (big homing shots, charged counters)
 	  Add more later in ART and point an attack at it.
@@ -55,6 +57,17 @@ local ART = {
 	Shot    = 92112066875722,
 	BigShot = 85528247748669,
 }
+
+-- Animation frames (cut from the movement video). All face right, same size, feet aligned.
+local ANIM = {
+	Walk = {
+		120628941018999, 86536501504358, 115254919165960, 129453216334368,
+		127736563784893, 72945734562220, 121975260877533, 124019220909089,
+	},
+	Jump = { 121327365407036, 109299035581539, 86550538554013, 124344807347040 },
+}
+local WALK_FPS = 10
+local ANIM_FACES_RIGHT = true
 
 -- which way the art is drawn (used to mirror it toward Zenithega / along its flight)
 local ART_FACES_RIGHT = {
@@ -412,7 +425,12 @@ local function createSession(boss, module)
 	-- preload the art so nothing shows up blank
 	task.spawn(function()
 		local list = {}
-		for _, id in pairs(ART) do
+		local ids = {}
+		for _, id in pairs(ART) do ids[#ids + 1] = id end
+		for _, set in pairs(ANIM) do
+			for _, id in ipairs(set) do ids[#ids + 1] = id end
+		end
+		for _, id in ipairs(ids) do
 			local i = Instance.new("ImageLabel")
 			i.Image = artUrl(id)
 			list[#list + 1] = i
@@ -475,12 +493,8 @@ local function createSession(boss, module)
 		local p = S.pose
 		if p == "Idle" then
 			return math.sin(now * 3) * 0.15, 1, 0
-		elseif p == "Walk" then
-			return math.abs(math.sin(now * 10)) * 0.4, 1, 5
-		elseif p == "Jump" then
-			return 0, 1.06, -6
-		elseif p == "Fall" then
-			return 0, 0.97, 6
+		elseif p == "Walk" or p == "Jump" or p == "Fall" then
+			return 0, 1, 0 -- the real animation frames do the work now
 		elseif p == "Crouch" then
 			return 0, 0.6, 0
 		elseif p == "Tiger" or p == "Sanic" then
@@ -501,9 +515,46 @@ local function createSession(boss, module)
 		return 0, 1, 0
 	end
 
+	-- pick the animation frame for this moment
+	S.walkPhase, S.lastDraw, S.airSince = 0, os.clock(), nil
+	local function currentFrameId(dt)
+		local p = S.pose
+		if p == "Death" or p == "Crouch" or p == "Laugh" or p == "Damaged" then
+			return ANIM.Walk[1]
+		end
+		local airborne = (not S.grounded) and not S.cutscene
+		if S.cutscene and p == "Fall" then airborne = true end
+		if p == "Uppercut" then return ANIM.Jump[2] end
+		if airborne then
+			S.airSince = S.airSince or os.clock()
+			if os.clock() - S.airSince < 0.08 and (S.vy or 0) > 0 then return ANIM.Jump[1] end
+			local vy = S.cutscene and -30 or (S.vy or 0)
+			if vy > 20 then return ANIM.Jump[2] end
+			if vy > -20 then return ANIM.Jump[3] end
+			return ANIM.Jump[4]
+		end
+		S.airSince = nil
+		local speed = math.abs(S.vz or 0)
+		if S.dodgeUntil and os.clock() < S.dodgeUntil then speed = math.abs(S.dodgeVz or 0) end
+		if p == "Walk" or ((p == "Idle") and speed > 1) then
+			local rate = math.max(speed / CFG.WalkSpeed, 0.6)
+			S.walkPhase = S.walkPhase + dt * WALK_FPS * rate
+			return ANIM.Walk[math.floor(S.walkPhase) % #ANIM.Walk + 1]
+		end
+		S.walkPhase = 0
+		return ANIM.Walk[1]
+	end
+
 	-- place the body for this frame (also used during the victory scene)
 	local function drawBody(pos)
 		local now = os.clock()
+		local dt = math.clamp(now - S.lastDraw, 0, 0.1)
+		S.lastDraw = now
+		local id = currentFrameId(dt)
+		if S.frameId ~= id then
+			S.frameId = id
+			label.Image = artUrl(id)
+		end
 		local yOff, sy, tilt = poseVisual(now)
 		local h = bodyH * sy
 		part.Size = Vector3.new(bodyW, h, 0.2)
@@ -515,7 +566,7 @@ local function createSession(boss, module)
 		local roll = math.rad(tilt) * (S.faceLeft and 1 or -1)
 		part.CFrame = CFrame.new(pos + Vector3.new(0, yOff - (bodyH - h) / 2, shake))
 			* CFrame.Angles(0, math.pi / 2, 0) * CFrame.Angles(0, 0, roll)
-		setMirror(label, S.faceLeft == ART_FACES_RIGHT.Body)
+		setMirror(label, S.faceLeft == ANIM_FACES_RIGHT)
 	end
 
 	--// HUD: Lord Arieus bar (Zenithega keeps her own bar)
@@ -693,6 +744,9 @@ local function createSession(boss, module)
 		if S.over or not HealthLock then return false end
 		if boss.Dead or boss.CannotTakeDamage then return false end
 		if type(boss.Shield) == "table" and not boss.Shield.Dead then return false end
+		-- same rule as for the player: she can only be hurt while she is doing an attack
+		-- that leaves her open (her moves switch boss.vulnerable on for that window)
+		if not boss.vulnerable then return false end
 		local health = boss.Health or 0
 		if boss.FinalPhaseActive and health - dmg <= FINISH_HP then
 			finish("Boss")
