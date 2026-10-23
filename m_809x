@@ -1,13 +1,16 @@
--- Apply LOOK & Client-Side Mesh/Accessory Injection + Fixed Spectator Text Spoofer
+-- Apply LOOK & Client-Side Asset/Mesh Injection + Strict Spectator Text Spoofer
 local Players = game:GetService("Players")
+local InsertService = game:GetService("InsertService")
 local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
--- Direct Asset IDs for Meme Head, Bow, and Sunglasses
-local MEME_HEAD_ID = 12834852093
-local BOW_ID = 6202215246
-local GLASSES_ID = 5973064363
+-- Specific custom assets provided for the look
+local CUSTOM_ASSETS = {
+    12834852093, -- Funny Meme Head
+    6202215246,  -- Pink Head Bow
+    5973064363   -- Swaggy Sunglasses Mini
+}
 
 local spoofViewName = false
 local viewNameOverride = ""
@@ -62,12 +65,6 @@ local function applyCustomLook(targetName, lookSource)
         return false
     end
 
-    local head = char:FindFirstChild("Head")
-    if not head then
-        dbg("ERROR: Target head missing")
-        return false
-    end
-
     dbg("Target found: " .. targetPl.Name)
     stripVisuals(char)
     task.wait(0.1)
@@ -100,60 +97,51 @@ local function applyCustomLook(targetName, lookSource)
         end)
     end
 
-    -- 2. Client-side direct mesh/accessory injection using MeshId/SpecialMesh wrappers
-    -- Meme Head injection
-    pcall(function()
-        for _, child in ipairs(head:GetChildren()) do
-            if child:IsA("SpecialMesh") or child:IsA("CylinderMesh") then
-                child:Destroy()
-            end
-        end
-        local mesh = Instance.new("SpecialMesh")
-        mesh.MeshType = Enum.MeshType.FileMesh
-        mesh.MeshId = "rbxassetid://" .. tostring(MEME_HEAD_ID)
-        mesh.Parent = head
-        successCount = successCount + 1
-        dbg("Injected Meme Head Mesh successfully")
-    end)
-
-    -- Helper function to attach accessory items client-side
-    local function attachClientAccessory(assetId)
+    -- 2. Client-side direct asset loading & insertion for Meme Head, Bow, and Sunglasses
+    for _, assetId in ipairs(CUSTOM_ASSETS) do
+        local loadedObjects = nil
         pcall(function()
-            local acc = Instance.new("Accessory")
-            local handle = Instance.new("Part")
-            handle.Name = "Handle"
-            handle.Size = Vector3.new(1, 1, 1)
-            handle.Transparency = 1
-            handle.CanCollide = false
-            
-            local mesh = Instance.new("SpecialMesh")
-            mesh.MeshType = Enum.MeshType.FileMesh
-            mesh.MeshId = "rbxassetid://" .. tostring(assetId)
-            mesh.Parent = handle
-            
-            handle.Parent = acc
-            
-            -- Weld handle to head
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = head
-            weld.Part1 = handle
-            weld.Parent = handle
-            handle.CFrame = head.CFrame
-            
-            acc.Parent = char
-            successCount = successCount + 1
-            dbg("Injected custom accessory ID: " .. tostring(assetId))
+            loadedObjects = game:GetObjects("rbxassetid://" .. tostring(assetId))
         end)
-    end
+        if not loadedObjects then
+            pcall(function()
+                local model = InsertService:LoadAsset(assetId)
+                if model then loadedObjects = {model} end
+            end)
+        end
 
-    attachClientAccessory(BOW_ID)
-    attachClientAccessory(GLASSES_ID)
+        if loadedObjects then
+            for _, obj in ipairs(loadedObjects) do
+                if obj then
+                    if obj:IsA("Model") or obj:IsA("Folder") then
+                        for _, desc in ipairs(obj:GetDescendants()) do
+                            if desc:IsA("Accessory") or desc:IsA("MeshPart") or desc:IsA("SpecialMesh") then
+                                pcall(function()
+                                    desc:Clone().Parent = char
+                                    successCount = successCount + 1
+                                end)
+                            end
+                        end
+                        obj:Destroy()
+                    elseif obj:IsA("Accessory") or obj:IsA("MeshPart") or obj:IsA("SpecialMesh") or obj:IsA("BasePart") then
+                        pcall(function()
+                            obj.Parent = char
+                            successCount = successCount + 1
+                        end)
+                    end
+                    dbg("Successfully injected asset ID: " .. tostring(assetId))
+                end
+            end
+        else
+            dbg("Failed to download asset ID: " .. tostring(assetId))
+        end
+    end
 
     dbg("Total custom elements applied: " .. successCount)
     return successCount > 0
 end
 
--- Fixed Spectator Text Spoofer (Targets ONLY .Text property, never instance .Name)
+-- Spectator View Name Spoofer (Modifies .Text ONLY, never touches instance .Name)
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
@@ -162,7 +150,6 @@ local function setViewNameText(text)
         
         for _, root in ipairs(roots) do
             for _, g in ipairs(root:GetDescendants()) do
-                -- Strictly check TextLabel or TextButton and modify .Text ONLY
                 if g:IsA("TextLabel") or g:IsA("TextButton") then
                     local t = g.Text or ""
                     local lower = string.lower(t)
@@ -205,7 +192,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 24)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "Client Mesh & Spectate Fix"
+title.Text = "Client Mesh & Spectate Text Fix"
 title.TextColor3 = Color3.fromRGB(255, 180, 100)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
