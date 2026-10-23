@@ -1,4 +1,4 @@
--- Spectator Text Spoofer Only (Strictly modifies .Text, never instance .Name)
+-- Clean Spectator Text Spoofer (Text-Only)
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
@@ -18,7 +18,6 @@ local function dbg(msg)
     end)
 end
 
--- Aggressive Text-Only Spectator Spoofer
 local function updateSpectatorText(targetName, lookName)
     if not spoofViewName then return end
     pcall(function()
@@ -27,17 +26,18 @@ local function updateSpectatorText(targetName, lookName)
         
         for _, root in ipairs(roots) do
             for _, g in ipairs(root:GetDescendants()) do
-                -- STRICTLY check TextLabel or TextButton and modify .Text ONLY. Never touch g.Name!
                 if g:IsA("TextLabel") or g:IsA("TextButton") then
                     local t = g.Text or ""
                     if t ~= "" then
-                        -- If the text contains the target player's name, replace it with the look name
+                        -- Replace target name with look name if present
                         if targetName ~= "" and string.find(t, targetName, 1, true) then
                             local newText = t:gsub(targetName, lookName)
                             if newText ~= t then
                                 g.Text = newText
                             end
-                        -- Or if it matches standard spectate UI patterns
+                        end
+                        
+                        -- Catch general viewing/spectating labels
                         local lower = string.lower(t)
                         if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") then
                             g.Text = "Viewing " .. lookName
@@ -158,7 +158,6 @@ dbgLabel.Parent = main
 Instance.new("UICorner", dbgLabel).CornerRadius = UDim.new(0, 6)
 _G.__SpectateDebugLabel = dbgLabel
 
--- Main Loop checking text properties continuously
 task.spawn(function()
     while true do
         task.wait(0.1)
