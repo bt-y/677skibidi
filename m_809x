@@ -1,10 +1,13 @@
--- Complete GUI Script: Avatar Look, Safe Spectator Text Spoofer, and Workspace Model Name Changer
+-- Bulletproof Master GUI Script: Avatar Look, Spectate Spoofer, & Workspace Model Renamer
+task.wait(0.5)
+
 local Players = game:GetService("Players")
-local InsertService = game:GetService("InsertService")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
-local lp = Players.LocalPlayer
-local pg = lp:WaitForChild("PlayerGui")
+local InsertService = game:GetService("InsertService")
+
+local lp = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local pg = lp:WaitForChild("PlayerGui", 5)
 
 -- Assets for Avatar Look
 local MEME_HEAD_ID = 12834852093
@@ -12,7 +15,6 @@ local BOW_ID = 6202215246
 local GLASSES_ID = 5973064363
 
 local spoofViewName = false
-local viewNameOverride = ""
 local workspaceModeActive = false
 local debugLines = {}
 
@@ -141,11 +143,11 @@ local function applyCustomLook(targetName, lookSource)
     attachAccessory(BOW_ID)
     attachAccessory(GLASSES_ID)
 
-    dbg("Look applied successfully! Items: " .. successCount)
+    dbg("Look applied successfully! Items: " + successCount)
     return successCount > 0
 end
 
--- Safe Spectator Text Spoofer (Changes .Text ONLY, never touches instance names)
+-- Safe Spectator Text Spoofer (Changes .Text ONLY)
 local function updateSpectatorText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
@@ -181,13 +183,20 @@ local function updateWorkspaceModelName()
     end)
 end
 
--- GUI Construction
-local gui = Instance.new("ScreenGui")
-gui.Name = "MasterControlGui"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-pcall(function() gui.Parent = CoreGui end)
-if not gui.Parent then gui.Parent = pg end
+-- GUI Construction (Protected Startup)
+local guiSuccess, gui = pcall(function()
+    local g = Instance.new("ScreenGui")
+    g.Name = "MasterControlGui"
+    g.ResetOnSpawn = false
+    g.IgnoreGuiInset = true
+    pcall(function() g.Parent = CoreGui end)
+    if not g.Parent then g.Parent = pg end
+    return g
+end)
+
+if not guiSuccess or not gui then
+    return
+end
 
 local main = Instance.new("Frame")
 main.Size = UDim2.fromOffset(340, 470)
