@@ -1,4 +1,4 @@
--- Apply LOOK to TARGET player with proper welding and attachment mapping for accessories/meshes
+-- Apply LOOK to TARGET player with recursive asset unpacking and robust attachment injection
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
@@ -65,7 +65,6 @@ local function applyCustomLook(targetName, lookSource)
     end
 
     local head = char:FindFirstChild("Head")
-    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
     if not head then
         dbg("ERROR: Target head missing")
         return false
@@ -103,43 +102,41 @@ local function applyCustomLook(targetName, lookSource)
         end)
     end
 
-    -- 2. Securely load and weld custom assets to prevent hitbox stretching
+    -- 2. Recursively load and unpack custom assets (Accessories, Meshes, and Heads)
     for _, assetId in ipairs(CUSTOM_ASSETS) do
         pcall(function()
             local content = game:GetObjects("rbxassetid://" .. tostring(assetId))
             for _, obj in ipairs(content) do
                 if obj then
-                    -- If it downloads as an Accessory container
                     if obj:IsA("Accessory") then
                         obj.Parent = char
                         addedCount = addedCount + 1
-                        dbg("Attached Accessory ID: " .. tostring(assetId))
-                    -- If it downloads as a MeshPart or BasePart (like custom heads/hats)
-                    elseif obj:IsA("BasePart") or obj:IsA("MeshPart") then
-                        obj.CFrame = head.CFrame
-                        local weld = Instance.new("WeldConstraint")
-                        weld.Part0 = head
-                        weld.Part1 = obj
-                        weld.Parent = obj
-                        obj.Parent = char
-                        addedCount = addedCount + 1
-                        dbg("Welded Part ID: " .. tostring(assetId))
-                    -- If it's a Model package containing parts
+                        dbg("Injected Accessory: " .. tostring(assetId))
                     elseif obj:IsA("Model") then
-                        for _, p in ipairs(obj:GetDescendants()) do
-                            if p:IsA("BasePart") or p:IsA("Accessory") then
-                                p.Parent = char
+                        for _, desc in ipairs(obj:GetDescendants()) do
+                            if desc:IsA("Accessory") then
+                                desc:Clone().Parent = char
+                                addedCount = addedCount + 1
+                            elseif desc:IsA("MeshPart") or desc:IsA("SpecialMesh") then
+                                desc:Clone().Parent = head
                                 addedCount = addedCount + 1
                             end
                         end
                         obj:Destroy()
+                    elseif obj:IsA("MeshPart") or obj:IsA("SpecialMesh") then
+                        obj.Parent = head
+                        addedCount = addedCount + 1
+                        dbg("Injected Mesh into Head: " .. tostring(assetId))
+                    else
+                        obj.Parent = char
+                        addedCount = addedCount + 1
                     end
                 end
             end
         end)
     end
 
-    dbg("Total items securely loaded: " .. addedCount)
+    dbg("Total custom items loaded: " .. addedCount)
     return addedCount > 0
 end
 
@@ -173,7 +170,7 @@ task.spawn(function()
     end
 end)
 
--- UI Construction
+-- GUI Construction
 local gui = Instance.new("ScreenGui")
 gui.Name = "AvatarSpoofGui"
 gui.ResetOnSpawn = false
