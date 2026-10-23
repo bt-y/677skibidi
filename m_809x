@@ -1,142 +1,154 @@
--- mm2 avatar / view name tool (local only)
--- Appearance changes are mostly client-side; other players may still see your real avatar.
--- Asset model: 105603353657140
--- Default look user: m_809x (2680311444)
+-- Avatar look + spectator name (local)
+-- Asset: 105603353657140 | default user m_809x 2680311444
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
 local InsertService = game:GetService("InsertService")
+local HS = game:GetService("HttpService")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
-local DEFAULT_USER_ID = 2680311444 -- m_809x
+local DEFAULT_USER_ID = 2680311444
 local ASSET_ID = 105603353657140
 
 local viewNameOverride = ""
 local spoofViewName = false
 local useAssetModel = false
+local lastTarget = "m_809x"
+local statusFn = function() end
 
--- =========================================================
--- APPEARANCE
--- =========================================================
+local function setStatus(t)
+    pcall(statusFn, t)
+end
+
 local function getUserIdFromName(name)
     name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
     if name == "" then return nil end
     local id = nil
-    pcall(function()
-        id = Players:GetUserIdFromNameAsync(name)
-    end)
+    pcall(function() id = Players:GetUserIdFromNameAsync(name) end)
+    if not id then
+        pcall(function()
+            local req = request or (syn and syn.request) or (http and http.request)
+            if req then
+                local res = req({
+                    Url = "https://users.roblox.com/v1/usernames/users",
+                    Method = "POST",
+                    Headers = {["Content-Type"] = "application/json"},
+                    Body = HS:JSONEncode({usernames = {name}, excludeBannedUsers = true})
+                })
+                local body = res and (res.Body or res.body)
+                if body then id = tonumber(string.match(body, '"id"%s*:%s*(%d+)')) end
+            end
+        end)
+    end
     return id
 end
 
-local function clearCharacterAccessories(char)
+local function stripVisuals(char)
     for _, c in ipairs(char:GetChildren()) do
         if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic")
             or c:IsA("BodyColors") or c:IsA("CharacterMesh") then
             pcall(function() c:Destroy() end)
         end
     end
-    local head = char:FindFirstChild("Head")
-    if head then
-        for _, c in ipairs(head:GetChildren()) do
-            if c:IsA("Decal") and c.Name == "face" then
-                -- keep slot, description will replace
-            end
-        end
-    end
 end
 
-local function applyHumanoidDescription(userId)
+local function applyDesc(hum, desc)
+    if not hum or not desc then return false end
+    local ok = pcall(function() hum:ApplyDescription(desc) end)
+    return ok
+end
+
+local function applyFromUserId(userId)
     local char = lp.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then return false end
-    local ok, desc = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(userId)
-    end)
-    if not ok or not desc then return false end
-    pcall(function()
-        hum:ApplyDescription(desc)
-    end)
-    -- some executors need client replicate
-    pcall(function()
-        hum:ApplyDescriptionClient(desc)
-    end)
-    return true
+    local desc = nil
+    pcall(function() desc = Players:GetHumanoidDescriptionFromUserId(tonumber(userId)) end)
+    if not desc then return false end
+    stripVisuals(char)
+    task.wait(0.05)
+    return applyDesc(hum, desc)
 end
 
-local function applyAssetModel()
-    local char = lp.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not char or not root or not hum then return false end
-
+local function loadAssetModel()
     local model = nil
     pcall(function()
-        model = InsertService:LoadAsset(ASSET_ID)
+        local objs = game:GetObjects("rbxassetid://" .. tostring(ASSET_ID))
+        if objs and objs[1] then model = objs[1] end
     end)
     if not model then
-        pcall(function()
-            local objs = game:GetObjects("rbxassetid://" .. tostring(ASSET_ID))
-            if objs and objs[1] then model = objs[1] end
-        end)
+        pcall(function() model = InsertService:LoadAsset(ASSET_ID) end)
     end
-    if not model then return false end
-
-    local avatar = model:IsA("Model") and model or model:FindFirstChildOfClass("Model")
-    if not avatar then
-        avatar = model
-    end
-
-    -- Prefer HumanoidDescription from asset if present
-    local desc = avatar:FindFirstChildOfClass("HumanoidDescription")
-    if desc then
-        pcall(function() hum:ApplyDescription(desc:Clone()) end)
-        pcall(function() model:Destroy() end)
-        return true
-    end
-
-    -- Fallback: copy accessories / clothing from asset onto character
-    clearCharacterAccessories(char)
-    for _, c in ipairs(avatar:GetChildren()) do
-        if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or c:IsA("BodyColors") then
-            pcall(function()
-                local cl = c:Clone()
-                cl.Parent = char
-            end)
+    if not model then return nil end
+    if model:IsA("Model") then
+        local inner = model:FindFirstChildOfClass("Model")
+        if inner and (inner:FindFirstChildOfClass("Humanoid") or inner:FindFirstChildOfClass("HumanoidDescription")) then
+            return inner, model
         end
     end
-    pcall(function() model:Destroy() end)
+    return model, model
+end
+
+local function applyFromAsset()
+    local char = lp.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not char or not hum then return false end
+    local avatar, bag = loadAssetModel()
+    if not avatar then return false end
+    local desc = avatar:FindFirstChildOfClass("HumanoidDescription")
+    if not desc then
+        for _, d in ipairs(avatar:GetDescendants()) do
+            if d:IsA("HumanoidDescription") then desc = d break end
+        end
+    end
+    if desc then
+        stripVisuals(char)
+        local ok = applyDesc(hum, desc:Clone())
+        pcall(function() if bag then bag:Destroy() end end)
+        return ok
+    end
+    stripVisuals(char)
+    for _, c in ipairs(avatar:GetDescendants()) do
+        if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or c:IsA("BodyColors") then
+            pcall(function() c:Clone().Parent = char end)
+        end
+    end
+    local ah = avatar:FindFirstChildOfClass("Humanoid")
+    if ah then
+        pcall(function()
+            local ad = ah:GetAppliedDescription()
+            if ad then applyDesc(hum, ad) end
+        end)
+    end
+    pcall(function() if bag then bag:Destroy() end end)
     return true
 end
 
 local function applyLook(targetName)
-    local char = lp.Character or lp.CharacterAdded:Wait()
-    if not char:FindFirstChildOfClass("Humanoid") then
-        char:WaitForChild("Humanoid", 5)
-    end
+    local char = lp.Character
+    if not char then char = lp.CharacterAdded:Wait() end
+    local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 8)
+    if not hum then setStatus("No humanoid") return false end
 
     if useAssetModel then
-        if applyAssetModel() then return true end
+        setStatus("Loading asset...")
+        if applyFromAsset() then setStatus("Asset applied") return true end
+        setStatus("Asset failed, trying user id...")
     end
 
-    local uid = getUserIdFromName(targetName)
-    if not uid then uid = DEFAULT_USER_ID end
-    return applyHumanoidDescription(uid)
+    local uid = getUserIdFromName(targetName) or DEFAULT_USER_ID
+    setStatus("UserId " .. tostring(uid))
+    task.wait(0.1)
+    if applyFromUserId(uid) then setStatus("Look applied") return true end
+    setStatus("Apply failed")
+    return false
 end
 
--- Re-apply after respawn if last target saved
-local lastTarget = "m_809x"
 lp.CharacterAdded:Connect(function()
-    task.wait(1)
-    if lastTarget and lastTarget ~= "" then
-        applyLook(lastTarget)
-    end
+    task.wait(1.2)
+    if lastTarget and lastTarget ~= "" then applyLook(lastTarget) end
 end)
 
--- =========================================================
--- SPECTATOR / "VIEWING" NAME SPOOF
--- =========================================================
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
@@ -144,52 +156,25 @@ local function setViewNameText(text)
             if g:IsA("TextLabel") or g:IsA("TextButton") then
                 local t = g.Text or ""
                 local lower = string.lower(t)
-                -- common spectator patterns
-                if lower:find("viewing") or lower:find("spectat") or lower:find("watching")
-                    or lower:find("now watching") or lower:find("camera") then
-                    -- replace username-like tail or whole line
+                if lower:find("viewing") or lower:find("spectat") or lower:find("watching") then
                     local newT = t
-                    -- "Viewing PlayerName" / "Spectating PlayerName"
                     newT = string.gsub(newT, "([Vv]iewing%s+)[%w_]+", "%1" .. text)
                     newT = string.gsub(newT, "([Ss]pectating%s+)[%w_]+", "%1" .. text)
                     newT = string.gsub(newT, "([Ww]atching%s+)[%w_]+", "%1" .. text)
-                    if newT == t and #t < 40 and not lower:find("viewing") then
-                        -- pure username label near spectator UI
-                        if g.Parent and string.lower(g.Parent.Name):find("spect") then
-                            newT = text
-                        end
-                    end
-                    if newT ~= t then
-                        g.Text = newT
-                    end
+                    if newT ~= t then g.Text = newT end
                 end
             end
         end
     end)
 end
 
--- continuous soft overwrite while enabled
 task.spawn(function()
     while true do
         task.wait(0.35)
-        if spoofViewName and viewNameOverride ~= "" then
-            setViewNameText(viewNameOverride)
-        end
+        if spoofViewName and viewNameOverride ~= "" then setViewNameText(viewNameOverride) end
     end
 end)
 
-pg.DescendantAdded:Connect(function(obj)
-    if not spoofViewName or viewNameOverride == "" then return end
-    task.defer(function()
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            setViewNameText(viewNameOverride)
-        end
-    end)
-end)
-
--- =========================================================
--- GUI
--- =========================================================
 local gui = Instance.new("ScreenGui")
 gui.Name = "AvatarSpoofGui"
 gui.ResetOnSpawn = false
@@ -197,8 +182,8 @@ gui.IgnoreGuiInset = true
 gui.Parent = pg
 
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(300, 280)
-main.Position = UDim2.new(0.5, -150, 0.35, 0)
+main.Size = UDim2.fromOffset(300, 300)
+main.Position = UDim2.new(0.5, -150, 0.32, 0)
 main.BackgroundColor3 = Color3.fromRGB(22, 12, 8)
 main.Active = true
 main.Draggable = true
@@ -228,23 +213,24 @@ close.Parent = main
 Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
 close.MouseButton1Click:Connect(function() gui:Destroy() end)
 
-local lbl1 = Instance.new("TextLabel")
-lbl1.Size = UDim2.new(1, -24, 0, 16)
-lbl1.Position = UDim2.new(0, 12, 0, 42)
-lbl1.BackgroundTransparency = 1
-lbl1.Text = "Target username (look)"
-lbl1.TextColor3 = Color3.fromRGB(200, 170, 140)
-lbl1.Font = Enum.Font.Gotham
-lbl1.TextSize = 11
-lbl1.TextXAlignment = Enum.TextXAlignment.Left
-lbl1.Parent = main
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -24, 0, 16)
+status.Position = UDim2.new(0, 12, 0, 36)
+status.BackgroundTransparency = 1
+status.Text = "Ready"
+status.TextColor3 = Color3.fromRGB(160, 200, 120)
+status.Font = Enum.Font.Gotham
+status.TextSize = 11
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Parent = main
+statusFn = function(t) status.Text = tostring(t) end
 
 local box = Instance.new("TextBox")
 box.Size = UDim2.new(1, -24, 0, 30)
-box.Position = UDim2.new(0, 12, 0, 60)
+box.Position = UDim2.new(0, 12, 0, 56)
 box.BackgroundColor3 = Color3.fromRGB(35, 18, 10)
 box.Text = "m_809x"
-box.PlaceholderText = "username"
+box.PlaceholderText = "username to copy look"
 box.TextColor3 = Color3.new(1, 1, 1)
 box.Font = Enum.Font.Gotham
 box.TextSize = 13
@@ -254,7 +240,7 @@ Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
 
 local applyBtn = Instance.new("TextButton")
 applyBtn.Size = UDim2.new(1, -24, 0, 32)
-applyBtn.Position = UDim2.new(0, 12, 0, 98)
+applyBtn.Position = UDim2.new(0, 12, 0, 94)
 applyBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 25)
 applyBtn.Text = "Apply look"
 applyBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -265,7 +251,7 @@ Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 6)
 
 local assetBtn = Instance.new("TextButton")
 assetBtn.Size = UDim2.new(1, -24, 0, 28)
-assetBtn.Position = UDim2.new(0, 12, 0, 136)
+assetBtn.Position = UDim2.new(0, 12, 0, 132)
 assetBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
 assetBtn.Text = "Use asset model: OFF"
 assetBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -279,33 +265,42 @@ assetBtn.MouseButton1Click:Connect(function()
     assetBtn.BackgroundColor3 = useAssetModel and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
 end)
 
-local lbl2 = Instance.new("TextLabel")
-lbl2.Size = UDim2.new(1, -24, 0, 16)
-lbl2.Position = UDim2.new(0, 12, 0, 172)
-lbl2.BackgroundTransparency = 1
-lbl2.Text = "Spectator view name"
-lbl2.TextColor3 = Color3.fromRGB(200, 170, 140)
-lbl2.Font = Enum.Font.Gotham
-lbl2.TextSize = 11
-lbl2.TextXAlignment = Enum.TextXAlignment.Left
-lbl2.Parent = main
+local defBtn = Instance.new("TextButton")
+defBtn.Size = UDim2.new(1, -24, 0, 26)
+defBtn.Position = UDim2.new(0, 12, 0, 166)
+defBtn.BackgroundColor3 = Color3.fromRGB(60, 40, 20)
+defBtn.Text = "Apply m_809x (id only)"
+defBtn.TextColor3 = Color3.new(1, 1, 1)
+defBtn.Font = Enum.Font.GothamBold
+defBtn.TextSize = 11
+defBtn.Parent = main
+Instance.new("UICorner", defBtn).CornerRadius = UDim.new(0, 6)
+defBtn.MouseButton1Click:Connect(function()
+    useAssetModel = false
+    lastTarget = "m_809x"
+    task.spawn(function()
+        setStatus("Applying id " .. DEFAULT_USER_ID)
+        local ok = applyFromUserId(DEFAULT_USER_ID)
+        setStatus(ok and "m_809x applied" or "id apply failed")
+    end)
+end)
 
 local viewBox = Instance.new("TextBox")
-viewBox.Size = UDim2.new(1, -24, 0, 30)
-viewBox.Position = UDim2.new(0, 12, 0, 190)
+viewBox.Size = UDim2.new(1, -24, 0, 28)
+viewBox.Position = UDim2.new(0, 12, 0, 200)
 viewBox.BackgroundColor3 = Color3.fromRGB(35, 18, 10)
 viewBox.Text = ""
-viewBox.PlaceholderText = "name shown while viewing"
+viewBox.PlaceholderText = "spectator view name"
 viewBox.TextColor3 = Color3.new(1, 1, 1)
 viewBox.Font = Enum.Font.Gotham
-viewBox.TextSize = 13
+viewBox.TextSize = 12
 viewBox.ClearTextOnFocus = false
 viewBox.Parent = main
 Instance.new("UICorner", viewBox).CornerRadius = UDim.new(0, 6)
 
 local viewBtn = Instance.new("TextButton")
 viewBtn.Size = UDim2.new(1, -24, 0, 28)
-viewBtn.Position = UDim2.new(0, 12, 0, 228)
+viewBtn.Position = UDim2.new(0, 12, 0, 236)
 viewBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
 viewBtn.Text = "Spoof view name: OFF"
 viewBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -313,32 +308,21 @@ viewBtn.Font = Enum.Font.GothamBold
 viewBtn.TextSize = 11
 viewBtn.Parent = main
 Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
-
 viewBtn.MouseButton1Click:Connect(function()
     spoofViewName = not spoofViewName
     viewNameOverride = viewBox.Text
     if viewNameOverride == "" then viewNameOverride = box.Text end
     viewBtn.Text = spoofViewName and "Spoof view name: ON" or "Spoof view name: OFF"
     viewBtn.BackgroundColor3 = spoofViewName and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
-    if spoofViewName then setViewNameText(viewNameOverride) end
 end)
 
 applyBtn.MouseButton1Click:Connect(function()
-    local name = box.Text
-    lastTarget = name
-    viewNameOverride = (viewBox.Text ~= "" and viewBox.Text) or name
-    applyBtn.Text = "Applying..."
+    lastTarget = box.Text
+    applyBtn.Text = "..."
     task.spawn(function()
-        local ok = applyLook(name)
-        applyBtn.Text = ok and "Applied" or "Failed - try asset ON"
-        task.wait(1.2)
+        local ok = applyLook(box.Text)
+        applyBtn.Text = ok and "OK" or "Failed"
+        task.wait(1.5)
         applyBtn.Text = "Apply look"
     end)
-end)
-
-viewBox.FocusLost:Connect(function()
-    if spoofViewName then
-        viewNameOverride = viewBox.Text
-        setViewNameText(viewNameOverride)
-    end
 end)
