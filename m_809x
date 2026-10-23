@@ -1,14 +1,14 @@
--- Apply LOOK to TARGET player with fixed Head/Accessory injection and Aggressive Spectator Name Spoofer
+-- Apply LOOK to TARGET player with proper welding and attachment mapping for accessories/meshes
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
--- Explicit mapping for custom assets: Head, Bow, Sunglasses
+-- Specific custom assets provided for the look
 local CUSTOM_ASSETS = {
-    {id = 12834852093, type = "Head"},
-    {id = 6202215246, type = "Accessory"},
-    {id = 5973064363, type = "Accessory"}
+    12834852093, -- Funny Meme Head
+    6202215246,  -- Pink Head Bow
+    5973064363   -- Swaggy Sunglasses Mini
 }
 
 local spoofViewName = false
@@ -64,13 +64,20 @@ local function applyCustomLook(targetName, lookSource)
         return false
     end
 
+    local head = char:FindFirstChild("Head")
+    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    if not head then
+        dbg("ERROR: Target head missing")
+        return false
+    end
+
     dbg("Target found: " .. targetPl.Name)
     stripVisuals(char)
     task.wait(0.1)
 
     local addedCount = 0
 
-    -- 1. Pull user description package
+    -- 1. Pull base clothing descriptions (Shirts/Pants)
     local targetUserId = tonumber(lookSource)
     if not targetUserId then
         pcall(function() targetUserId = Players:GetUserIdFromNameAsync(lookSource) end)
@@ -83,7 +90,7 @@ local function applyCustomLook(targetName, lookSource)
                 local model = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
                 if model then
                     for _, child in ipairs(model:GetDescendants()) do
-                        if child:IsA("Accessory") or child:IsA("Shirt") or child:IsA("Pants") then
+                        if child:IsA("Shirt") or child:IsA("Pants") then
                             pcall(function()
                                 child:Clone().Parent = char
                                 addedCount = addedCount + 1
@@ -96,42 +103,47 @@ local function applyCustomLook(targetName, lookSource)
         end)
     end
 
-    -- 2. Force inject and properly fit custom assets (Head, Bow, Sunglasses)
-    for _, item in ipairs(CUSTOM_ASSETS) do
+    -- 2. Securely load and weld custom assets to prevent hitbox stretching
+    for _, assetId in ipairs(CUSTOM_ASSETS) do
         pcall(function()
-            local content = game:GetObjects("rbxassetid://" .. tostring(item.id))
+            local content = game:GetObjects("rbxassetid://" .. tostring(assetId))
             for _, obj in ipairs(content) do
                 if obj then
-                    if item.type == "Head" then
-                        -- If it's a head mesh or special head asset, replace or overlay it on the character's head
-                        local head = char:FindFirstChild("Head")
-                        if head then
-                            if obj:IsA("BasePart") then
-                                obj.CFrame = head.CFrame
-                                obj.Parent = char
-                                head.Transparency = 1
-                            elseif obj:IsA("Model") then
-                                obj.Parent = char
-                            else
-                                obj.Parent = head
+                    -- If it downloads as an Accessory container
+                    if obj:IsA("Accessory") then
+                        obj.Parent = char
+                        addedCount = addedCount + 1
+                        dbg("Attached Accessory ID: " .. tostring(assetId))
+                    -- If it downloads as a MeshPart or BasePart (like custom heads/hats)
+                    elseif obj:IsA("BasePart") or obj:IsA("MeshPart") then
+                        obj.CFrame = head.CFrame
+                        local weld = Instance.new("WeldConstraint")
+                        weld.Part0 = head
+                        weld.Part1 = obj
+                        weld.Parent = obj
+                        obj.Parent = char
+                        addedCount = addedCount + 1
+                        dbg("Welded Part ID: " .. tostring(assetId))
+                    -- If it's a Model package containing parts
+                    elseif obj:IsA("Model") then
+                        for _, p in ipairs(obj:GetDescendants()) do
+                            if p:IsA("BasePart") or p:IsA("Accessory") then
+                                p.Parent = char
+                                addedCount = addedCount + 1
                             end
                         end
-                    else
-                        -- Ensure accessories attach or parent properly
-                        obj.Parent = char
+                        obj:Destroy()
                     end
-                    addedCount = addedCount + 1
-                    dbg("Injected asset ID: " .. tostring(item.id))
                 end
             end
         end)
     end
 
-    dbg("Total items loaded/injected: " .. addedCount)
+    dbg("Total items securely loaded: " .. addedCount)
     return addedCount > 0
 end
 
--- Aggressive Spectator View Name Spoofer (Scans all UI roots constantly)
+-- Aggressive Spectator View Name Spoofer
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
@@ -144,7 +156,6 @@ local function setViewNameText(text)
                     local t = g.Text or ""
                     local lower = string.lower(t)
                     if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") or lower:find("cam") then
-                        -- Replace internal names dynamically or overwrite text string
                         g.Text = "Viewing " .. text
                     end
                 end
