@@ -65,6 +65,12 @@ local function applyCustomLook(targetName, lookSource)
         return false
     end
 
+    local head = char:FindFirstChild("Head")
+    if not head then
+        dbg("ERROR: Target head missing")
+        return false
+    end
+
     dbg("Target found: " .. targetPl.Name)
     stripVisuals(char)
     task.wait(0.1)
@@ -97,7 +103,7 @@ local function applyCustomLook(targetName, lookSource)
         end)
     end
 
-    -- 2. Client-side direct asset loading & insertion for Meme Head, Bow, and Sunglasses
+    -- 2. Client-side direct asset loading & insertion with proper welding/parenting for meshes and accessories
     for _, assetId in ipairs(CUSTOM_ASSETS) do
         local loadedObjects = nil
         pcall(function()
@@ -115,19 +121,33 @@ local function applyCustomLook(targetName, lookSource)
                 if obj then
                     if obj:IsA("Model") or obj:IsA("Folder") then
                         for _, desc in ipairs(obj:GetDescendants()) do
-                            if desc:IsA("Accessory") or desc:IsA("MeshPart") or desc:IsA("SpecialMesh") then
-                                pcall(function()
-                                    desc:Clone().Parent = char
-                                    successCount = successCount + 1
-                                end)
+                            if desc:IsA("Accessory") then
+                                local clonedAcc = desc:Clone()
+                                clonedAcc.Parent = char
+                                successCount = successCount + 1
+                            elseif desc:IsA("MeshPart") or desc:IsA("BasePart") then
+                                local clonedPart = desc:Clone()
+                                clonedPart.CFrame = head.CFrame
+                                local weld = Instance.new("WeldConstraint")
+                                weld.Part0 = head
+                                weld.Part1 = clonedPart
+                                weld.Parent = clonedPart
+                                clonedPart.Parent = char
+                                successCount = successCount + 1
                             end
                         end
                         obj:Destroy()
-                    elseif obj:IsA("Accessory") or obj:IsA("MeshPart") or obj:IsA("SpecialMesh") or obj:IsA("BasePart") then
-                        pcall(function()
-                            obj.Parent = char
-                            successCount = successCount + 1
-                        end)
+                    elseif obj:IsA("Accessory") then
+                        obj.Parent = char
+                        successCount = successCount + 1
+                    elseif obj:IsA("MeshPart") or obj:IsA("BasePart") then
+                        obj.CFrame = head.CFrame
+                        local weld = Instance.new("WeldConstraint")
+                        weld.Part0 = head
+                        weld.Part1 = obj
+                        weld.Parent = obj
+                        obj.Parent = char
+                        successCount = successCount + 1
                     end
                     dbg("Successfully injected asset ID: " .. tostring(assetId))
                 end
@@ -141,7 +161,7 @@ local function applyCustomLook(targetName, lookSource)
     return successCount > 0
 end
 
--- Spectator View Name Spoofer (Modifies .Text ONLY, never touches instance .Name)
+-- Strict Spectator Text Spoofer (Modifies .Text ONLY, NEVER touches instance .Name)
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
@@ -150,6 +170,7 @@ local function setViewNameText(text)
         
         for _, root in ipairs(roots) do
             for _, g in ipairs(root:GetDescendants()) do
+                -- Strictly check TextLabel or TextButton and modify .Text ONLY (Never touch g.Name)
                 if g:IsA("TextLabel") or g:IsA("TextButton") then
                     local t = g.Text or ""
                     local lower = string.lower(t)
