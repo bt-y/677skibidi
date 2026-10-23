@@ -1,13 +1,14 @@
--- Apply LOOK to TARGET player with custom assets and functional logging
+-- Apply LOOK to TARGET player with fixed Head/Accessory injection and Aggressive Spectator Name Spoofer
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
+-- Explicit mapping for custom assets: Head, Bow, Sunglasses
 local CUSTOM_ASSETS = {
-    12834852093, -- Funny Meme Head
-    6202215246,  -- Pink Head Bow
-    5973064363   -- Swaggy Sunglasses Mini
+    {id = 12834852093, type = "Head"},
+    {id = 6202215246, type = "Accessory"},
+    {id = 5973064363, type = "Accessory"}
 }
 
 local spoofViewName = false
@@ -29,14 +30,10 @@ local function getPlayerByName(name)
     name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
     if name == "" then return nil end
     for _, pl in ipairs(Players:GetPlayers()) do
-        if string.lower(pl.Name) == string.lower(name) then
-            return pl
-        end
+        if string.lower(pl.Name) == string.lower(name) then return pl end
     end
     for _, pl in ipairs(Players:GetPlayers()) do
-        if string.find(string.lower(pl.Name), string.lower(name), 1, true) then
-            return pl
-        end
+        if string.find(string.lower(pl.Name), string.lower(name), 1, true) then return pl end
     end
     return nil
 end
@@ -73,12 +70,10 @@ local function applyCustomLook(targetName, lookSource)
 
     local addedCount = 0
 
-    -- 1. Try to resolve and pull avatar description packages
+    -- 1. Pull user description package
     local targetUserId = tonumber(lookSource)
     if not targetUserId then
-        pcall(function()
-            targetUserId = Players:GetUserIdFromNameAsync(lookSource)
-        end)
+        pcall(function() targetUserId = Players:GetUserIdFromNameAsync(lookSource) end)
     end
 
     if targetUserId then
@@ -88,7 +83,7 @@ local function applyCustomLook(targetName, lookSource)
                 local model = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
                 if model then
                     for _, child in ipairs(model:GetDescendants()) do
-                        if child:IsA("Accessory") or child:IsA("Shirt") or child:IsA("Pants") or child:IsA("CharacterMesh") or child:IsA("SpecialMesh") then
+                        if child:IsA("Accessory") or child:IsA("Shirt") or child:IsA("Pants") then
                             pcall(function()
                                 child:Clone().Parent = char
                                 addedCount = addedCount + 1
@@ -101,15 +96,32 @@ local function applyCustomLook(targetName, lookSource)
         end)
     end
 
-    -- 2. Force inject specific listed assets (Head, Bow, Sunglasses)
-    for _, assetId in ipairs(CUSTOM_ASSETS) do
+    -- 2. Force inject and properly fit custom assets (Head, Bow, Sunglasses)
+    for _, item in ipairs(CUSTOM_ASSETS) do
         pcall(function()
-            local content = game:GetObjects("rbxassetid://" .. tostring(assetId))
+            local content = game:GetObjects("rbxassetid://" .. tostring(item.id))
             for _, obj in ipairs(content) do
                 if obj then
-                    obj.Parent = char
+                    if item.type == "Head" then
+                        -- If it's a head mesh or special head asset, replace or overlay it on the character's head
+                        local head = char:FindFirstChild("Head")
+                        if head then
+                            if obj:IsA("BasePart") then
+                                obj.CFrame = head.CFrame
+                                obj.Parent = char
+                                head.Transparency = 1
+                            elseif obj:IsA("Model") then
+                                obj.Parent = char
+                            else
+                                obj.Parent = head
+                            end
+                        end
+                    else
+                        -- Ensure accessories attach or parent properly
+                        obj.Parent = char
+                    end
                     addedCount = addedCount + 1
-                    dbg("Injected asset ID: " .. tostring(assetId))
+                    dbg("Injected asset ID: " .. tostring(item.id))
                 end
             end
         end)
@@ -119,19 +131,20 @@ local function applyCustomLook(targetName, lookSource)
     return addedCount > 0
 end
 
--- Spectator View Name Scanner & Spoofing Fix
+-- Aggressive Spectator View Name Spoofer (Scans all UI roots constantly)
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
-        local containers = {pg}
-        pcall(function() table.insert(containers, CoreGui) end)
+        local roots = {pg}
+        pcall(function() table.insert(roots, CoreGui) end)
         
-        for _, root in ipairs(containers) do
+        for _, root in ipairs(roots) do
             for _, g in ipairs(root:GetDescendants()) do
                 if g:IsA("TextLabel") or g:IsA("TextButton") then
                     local t = g.Text or ""
                     local lower = string.lower(t)
-                    if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") then
+                    if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") or lower:find("cam") then
+                        -- Replace internal names dynamically or overwrite text string
                         g.Text = "Viewing " .. text
                     end
                 end
@@ -142,14 +155,14 @@ end
 
 task.spawn(function()
     while true do
-        task.wait(0.2)
+        task.wait(0.15)
         if spoofViewName and viewNameOverride ~= "" then
             setViewNameText(viewNameOverride)
         end
     end
 end)
 
--- UI Construction with Restored Copy Debug Button
+-- UI Construction
 local gui = Instance.new("ScreenGui")
 gui.Name = "AvatarSpoofGui"
 gui.ResetOnSpawn = false
@@ -271,7 +284,6 @@ dbgLabel.Parent = main
 Instance.new("UICorner", dbgLabel).CornerRadius = UDim.new(0, 6)
 _G.__AvatarDebugLabel = dbgLabel
 
--- Restored Copy Debug Button
 local copyBtn = Instance.new("TextButton")
 copyBtn.Size = UDim2.new(1, -24, 0, 20)
 copyBtn.Position = UDim2.new(0, 12, 0, 370)
