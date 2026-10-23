@@ -1,0 +1,11 @@
+# MM2 control file - edit this on GitHub
+# Lines starting with # are ignored
+#
+# Kick a user (they must be running the HIDDEN script):
+# KICK UsernameHere Your custom message here
+#
+# Examples:
+# KICK focahormonada You are not allowed to use this script
+# KICK SomeAlt Stop stealing the farm
+#
+# Leave empty (or only comments) = nobody gets kicked
