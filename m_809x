@@ -1,282 +1,162 @@
--- Master GUI Script: Avatar Look, Spectator Text Spoofer, & Workspace Model Renamer
+-- Master Control Script: Workspace Model Renamer & Spectator Text Spoofer
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-local lp = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local pg = lp:WaitForChild("PlayerGui", 10)
+-- States
+local workspaceRenameActive = false
+local spectateSpoofActive = false
+local targetName = "naimradio66"
+local newName = "m_809x"
 
-local spoofViewName = false
-local workspaceModeActive = false
-local debugLines = {}
+-- Create GUI Safely
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MasterSpoofGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
 
-local function dbg(msg)
-    msg = tostring(msg)
-    table.insert(debugLines, os.date("%H:%M:%S") .. " | " .. msg)
-    if #debugLines > 50 then table.remove(debugLines, 1) end
-    pcall(function()
-        if _G.__MainDebugLabel then
-            _G.__MainDebugLabel.Text = table.concat(debugLines, "\n")
-        end
-    end)
+local success = pcall(function()
+    ScreenGui.Parent = CoreGui
+end)
+if not success then
+    ScreenGui.Parent = PlayerGui
 end
 
-local function getPlayerByName(name)
-    name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    if name == "" then return nil end
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if string.lower(pl.Name) == string.lower(name) then return pl end
-    end
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if string.find(string.lower(pl.Name), string.lower(name), 1, true) then return pl end
-    end
-    return nil
-end
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.fromOffset(300, 240)
+MainFrame.Position = UDim2.new(0.5, -150, 0.3, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
-local function applyCustomLook(targetName, lookSource)
-    dbg("=== APPLY LOOK START ===")
-    local targetPl = getPlayerByName(targetName)
-    if not targetPl then
-        dbg("ERROR: Target player not found")
-        return false
-    end
-    
-    local char = targetPl.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then
-        dbg("ERROR: Target character missing")
-        return false
-    end
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
-    local successCount = 0
-    local targetUserId = tonumber(lookSource)
-    if not targetUserId then
-        pcall(function() targetUserId = Players:GetUserIdFromNameAsync(lookSource) end)
-    end
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -30, 0, 30)
+Title.Position = UDim2.new(0, 10, 0, 5)
+Title.BackgroundTransparency = 1
+Title.Text = "Control Panel"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = MainFrame
 
-    if targetUserId then
-        pcall(function()
-            local desc = Players:GetHumanoidDescriptionFromUserId(targetUserId)
-            if desc then
-                local model = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
-                if model then
-                    for _, child in ipairs(model:GetDescendants()) do
-                        if child:IsA("Shirt") or child:IsA("Pants") then
-                            pcall(function()
-                                child:Clone().Parent = char
-                                successCount = successCount + 1
-                            end)
-                        end
-                    end
-                    model:Destroy()
-                end
-            end
-        end)
-    end
-
-    dbg("Look applied. Items: " .. successCount)
-    return true
-end
-
--- Mode 1: Spectator Text Spoofer
-local function updateSpectatorText(targetName, lookName)
-    if not spoofViewName then return end
-    pcall(function()
-        local roots = {pg}
-        pcall(function() table.insert(roots, CoreGui) end)
-        
-        for _, root in ipairs(roots) do
-            for _, g in ipairs(root:GetDescendants()) do
-                if g:IsA("TextLabel") or g:IsA("TextButton") then
-                    local t = g.Text or ""
-                    if t ~= "" then
-                        if targetName ~= "" and string.find(t, targetName, 1, true) then
-                            g.Text = t:gsub(targetName, lookName)
-                        end
-                        local lower = string.lower(t)
-                        if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") then
-                            g.Text = "Viewing " .. lookName
-                        end
-                    end
-                end
-            end
-        end
-    end)
-end
-
--- Mode 2: Workspace Model Name Changer (naimradio66 -> m_809x)
-local function updateWorkspaceModelName()
-    if not workspaceModeActive then return end
-    pcall(function()
-        for _, obj in ipairs(Workspace:GetChildren()) do
-            if obj:IsA("Model") and string.lower(obj.Name) == string.lower("naimradio66") then
-                obj.Name = "m_809x"
-                dbg("Workspace model 'naimradio66' renamed to 'm_809x'")
-            end
-        end
-    end)
-end
-
--- GUI Creation
-local gui = Instance.new("ScreenGui")
-gui.Name = "MasterControlGui"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true
-pcall(function() gui.Parent = CoreGui end)
-if not gui.Parent then gui.Parent = pg end
-
-local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(340, 440)
-main.Position = UDim2.new(0.5, -170, 0.2, 0)
-main.BackgroundColor3 = Color3.fromRGB(22, 12, 8)
-main.Active = true
-main.Draggable = true
-main.Parent = gui
-Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -40, 0, 24)
-title.Position = UDim2.new(0, 12, 0, 6)
-title.BackgroundTransparency = 1
-title.Text = "Master Spoofer & Control Panel"
-title.TextColor3 = Color3.fromRGB(255, 180, 100)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 13
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = main
-
-local close = Instance.new("TextButton")
-close.Size = UDim2.fromOffset(26, 26)
-close.Position = UDim2.new(1, -32, 0, 6)
-close.BackgroundColor3 = Color3.fromRGB(160, 40, 40)
-close.Text = "X"
-close.TextColor3 = Color3.new(1, 1, 1)
-close.Font = Enum.Font.GothamBold
-close.TextSize = 12
-close.Parent = main
-Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
-close.MouseButton1Click:Connect(function() gui:Destroy() end)
-
-local function mkLabel(y, text)
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1, -24, 0, 14)
-    l.Position = UDim2.new(0, 12, 0, y)
-    l.BackgroundTransparency = 1
-    l.Text = text
-    l.TextColor3 = Color3.fromRGB(200, 170, 140)
-    l.Font = Enum.Font.Gotham
-    l.TextSize = 11
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.Parent = main
-    return l
-end
-
-local function mkBox(y, placeholder, default)
-    local b = Instance.new("TextBox")
-    b.Size = UDim2.new(1, -24, 0, 26)
-    b.Position = UDim2.new(0, 12, 0, y)
-    b.BackgroundColor3 = Color3.fromRGB(35, 18, 10)
-    b.Text = default or ""
-    b.PlaceholderText = placeholder
-    b.TextColor3 = Color3.new(1, 1, 1)
-    b.Font = Enum.Font.Gotham
-    b.TextSize = 12
-    b.ClearTextOnFocus = false
-    b.Parent = main
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-    return b
-end
-
-mkLabel(32, "Target player username")
-local targetBox = mkBox(48, "e.g. naimradio66", "naimradio66")
-
-mkLabel(78, "Look source username / ID")
-local lookBox = mkBox(94, "e.g. m_809x", "m_809x")
-
-local applyBtn = Instance.new("TextButton")
-applyBtn.Size = UDim2.new(1, -24, 0, 30)
-applyBtn.Position = UDim2.new(0, 12, 0, 126)
-applyBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 25)
-applyBtn.Text = "Apply Look"
-applyBtn.TextColor3 = Color3.new(1, 1, 1)
-applyBtn.Font = Enum.Font.GothamBold
-applyBtn.TextSize = 12
-applyBtn.Parent = main
-Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 6)
-
-mkLabel(164, "Spectator text override name")
-local viewBox = mkBox(180, "Name shown during spectate", "m_809x")
-
-local viewBtn = Instance.new("TextButton")
-viewBtn.Size = UDim2.new(1, -24, 0, 26)
-viewBtn.Position = UDim2.new(0, 12, 0, 212)
-viewBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
-viewBtn.Text = "Spectate Text Spoofer: OFF"
-viewBtn.TextColor3 = Color3.new(1, 1, 1)
-viewBtn.Font = Enum.Font.GothamBold
-viewBtn.TextSize = 11
-viewBtn.Parent = main
-Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
-
-viewBtn.MouseButton1Click:Connect(function()
-    spoofViewName = not spoofViewName
-    viewBtn.Text = spoofViewName and "Spectate Text Spoofer: ON" or "Spectate Text Spoofer: OFF"
-    viewBtn.BackgroundColor3 = spoofViewName and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.fromOffset(24, 24)
+CloseBtn.Position = UDim2.new(1, -28, 0, 8)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 12
+CloseBtn.Parent = MainFrame
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 4)
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
 end)
 
-local wsBtn = Instance.new("TextButton")
-wsBtn.Size = UDim2.new(1, -24, 0, 26)
-wsBtn.Position = UDim2.new(0, 12, 0, 246)
-wsBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
-wsBtn.Text = "Workspace Rename (naimradio66 -> m_809x): OFF"
-wsBtn.TextColor3 = Color3.new(1, 1, 1)
-wsBtn.Font = Enum.Font.GothamBold
-wsBtn.TextSize = 10
-wsBtn.Parent = main
-Instance.new("UICorner", wsBtn).CornerRadius = UDim.new(0, 6)
+-- Toggle 1: Workspace Model Renamer
+local WorkspaceBtn = Instance.new("TextButton")
+WorkspaceBtn.Size = UDim2.new(1, -20, 0, 36)
+WorkspaceBtn.Position = UDim2.new(0, 10, 0, 45)
+WorkspaceBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+WorkspaceBtn.Text = "Workspace Rename: OFF"
+WorkspaceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+WorkspaceBtn.Font = Enum.Font.GothamBold
+WorkspaceBtn.TextSize = 12
+WorkspaceBtn.Parent = MainFrame
+Instance.new("UICorner", WorkspaceBtn).CornerRadius = UDim.new(0, 6)
 
-wsBtn.MouseButton1Click:Connect(function()
-    workspaceModeActive = not workspaceModeActive
-    wsBtn.Text = workspaceModeActive and "Workspace Rename: ON" or "Workspace Rename (naimradio66 -> m_809x): OFF"
-    wsBtn.BackgroundColor3 = workspaceModeActive and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
-    dbg("Workspace Rename Mode toggled: " .. tostring(workspaceModeActive))
+WorkspaceBtn.MouseButton1Click:Connect(function()
+    workspaceRenameActive = not workspaceRenameActive
+    if workspaceRenameActive then
+        WorkspaceBtn.Text = "Workspace Rename: ON"
+        WorkspaceBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+    else
+        WorkspaceBtn.Text = "Workspace Rename: OFF"
+        WorkspaceBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    end
 end)
 
-local dbgLabel = Instance.new("TextLabel")
-dbgLabel.Size = UDim2.new(1, -24, 0, 80)
-dbgLabel.Position = UDim2.new(0, 12, 0, 282)
-dbgLabel.BackgroundColor3 = Color3.fromRGB(10, 6, 4)
-dbgLabel.Text = "Ready..."
-dbgLabel.TextColor3 = Color3.fromRGB(140, 220, 140)
-dbgLabel.Font = Enum.Font.Code
-dbgLabel.TextSize = 10
-dbgLabel.TextXAlignment = Enum.TextXAlignment.Left
-dbgLabel.TextYAlignment = Enum.TextYAlignment.Top
-dbgLabel.TextWrapped = true
-dbgLabel.Parent = main
-Instance.new("UICorner", dbgLabel).CornerRadius = UDim.new(0, 6)
-_G.__MainDebugLabel = dbgLabel
+-- Toggle 2: Spectator Text Spoofer
+local SpectateBtn = Instance.new("TextButton")
+SpectateBtn.Size = UDim2.new(1, -20, 0, 36)
+SpectateBtn.Position = UDim2.new(0, 10, 0, 90)
+SpectateBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+SpectateBtn.Text = "Spectate Spoofer: OFF"
+SpectateBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpectateBtn.Font = Enum.Font.GothamBold
+SpectateBtn.TextSize = 12
+SpectateBtn.Parent = MainFrame
+Instance.new("UICorner", SpectateBtn).CornerRadius = UDim.new(0, 6)
 
-applyBtn.MouseButton1Click:Connect(function()
-    applyBtn.Text = "..."
-    task.spawn(function()
-        local ok = applyCustomLook(targetBox.Text, lookBox.Text)
-        applyBtn.Text = ok and "Applied!" or "Failed"
-        task.wait(1.5)
-        applyBtn.Text = "Apply Look"
-    end)
+SpectateBtn.MouseButton1Click:Connect(function()
+    spectateSpoofActive = not spectateSpoofActive
+    if spectateSpoofActive then
+        SpectateBtn.Text = "Spectate Spoofer: ON"
+        SpectateBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+    else
+        SpectateBtn.Text = "Spectate Spoofer: OFF"
+        SpectateBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    end
 end)
 
--- Main Loop
+-- Status Label
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -20, 0, 80)
+StatusLabel.Position = UDim2.new(0, 10, 0, 140)
+StatusLabel.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+StatusLabel.Text = "Status: Ready.\nTarget: naimradio66\nNew: m_809x"
+StatusLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
+StatusLabel.Font = Enum.Font.Code
+StatusLabel.TextSize = 11
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.TextYAlignment = Enum.TextYAlignment.Top
+StatusLabel.TextWrapped = true
+StatusLabel.Parent = MainFrame
+Instance.new("UICorner", StatusLabel).CornerRadius = UDim.new(0, 6)
+
+-- Background Loops for Modes
 task.spawn(function()
     while true do
-        task.wait(0.15)
-        if spoofViewName then
-            updateSpectatorText(targetBox.Text, viewBox.Text ~= "" and viewBox.Text or "m_809x")
+        task.wait(0.2)
+        
+        -- Mode 2: Workspace Model Rename
+        if workspaceRenameActive then
+            pcall(function()
+                for _, obj in ipairs(Workspace:GetChildren()) do
+                    if obj:IsA("Model") and obj.Name == targetName then
+                        obj.Name = newName
+                    end
+                end
+            end)
         end
-        if workspaceModeActive then
-            updateWorkspaceModelName()
+
+        -- Mode 1: Spectator Text Spoofer
+        if spectateSpoofActive then
+            pcall(function()
+                local roots = {PlayerGui}
+                pcall(function() table.insert(roots, CoreGui) end)
+                
+                for _, root in ipairs(roots) do
+                    for _, desc in ipairs(root:GetDescendants()) do
+                        if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+                            local text = desc.Text
+                            if text and text ~= "" then
+                                if string.find(text, targetName, 1, true) then
+                                    desc.Text = text:gsub(targetName, newName)
+                                elseif string.lower(text):find("viewing") or string.lower(text):find("spectat") then
+                                    desc.Text = "Viewing " .. newName
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
         end
     end
 end)
-
-dbg("GUI Loaded successfully.")
