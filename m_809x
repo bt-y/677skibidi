@@ -1,19 +1,10 @@
--- Apply LOOK & Client-Side Asset/Mesh Injection + Strict Spectator Text Spoofer
+-- Spectator Text Spoofer Only (Strictly modifies .Text, never instance .Name)
 local Players = game:GetService("Players")
-local InsertService = game:GetService("InsertService")
 local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
--- Specific custom assets provided for the look
-local CUSTOM_ASSETS = {
-    12834852093, -- Funny Meme Head
-    6202215246,  -- Pink Head Bow
-    5973064363   -- Swaggy Sunglasses Mini
-}
-
 local spoofViewName = false
-local viewNameOverride = ""
 local debugLines = {}
 
 local function dbg(msg)
@@ -21,161 +12,36 @@ local function dbg(msg)
     table.insert(debugLines, os.date("%H:%M:%S") .. " | " .. msg)
     if #debugLines > 50 then table.remove(debugLines, 1) end
     pcall(function()
-        if _G.__AvatarDebugLabel then
-            _G.__AvatarDebugLabel.Text = table.concat(debugLines, "\n")
+        if _G.__SpectateDebugLabel then
+            _G.__SpectateDebugLabel.Text = table.concat(debugLines, "\n")
         end
     end)
 end
 
-local function getPlayerByName(name)
-    name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    if name == "" then return nil end
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if string.lower(pl.Name) == string.lower(name) then return pl end
-    end
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if string.find(string.lower(pl.Name), string.lower(name), 1, true) then return pl end
-    end
-    return nil
-end
-
-local function stripVisuals(char)
-    local n = 0
-    for _, c in ipairs(char:GetDescendants()) do
-        if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic")
-            or c:IsA("BodyColors") or c:IsA("CharacterMesh") or c:IsA("SpecialMesh") then
-            pcall(function() c:Destroy() end)
-            n = n + 1
-        end
-    end
-    dbg("Stripped old visuals: " .. n)
-end
-
-local function applyCustomLook(targetName, lookSource)
-    dbg("=== CLIENT APPLY START ===")
-    local targetPl = getPlayerByName(targetName)
-    if not targetPl then
-        dbg("ERROR: Target player not found in server")
-        return false
-    end
-    
-    local char = targetPl.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then
-        dbg("ERROR: Target character missing")
-        return false
-    end
-
-    local head = char:FindFirstChild("Head")
-    if not head then
-        dbg("ERROR: Target head missing")
-        return false
-    end
-
-    dbg("Target found: " .. targetPl.Name)
-    stripVisuals(char)
-    task.wait(0.1)
-
-    local successCount = 0
-
-    -- 1. Apply base clothing (Shirt/Pants) via User ID description
-    local targetUserId = tonumber(lookSource)
-    if not targetUserId then
-        pcall(function() targetUserId = Players:GetUserIdFromNameAsync(lookSource) end)
-    end
-
-    if targetUserId then
-        pcall(function()
-            local desc = Players:GetHumanoidDescriptionFromUserId(targetUserId)
-            if desc then
-                local model = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
-                if model then
-                    for _, child in ipairs(model:GetDescendants()) do
-                        if child:IsA("Shirt") or child:IsA("Pants") then
-                            pcall(function()
-                                child:Clone().Parent = char
-                                successCount = successCount + 1
-                            end)
-                        end
-                    end
-                    model:Destroy()
-                end
-            end
-        end)
-    end
-
-    -- 2. Client-side direct asset loading & insertion with proper welding/parenting for meshes and accessories
-    for _, assetId in ipairs(CUSTOM_ASSETS) do
-        local loadedObjects = nil
-        pcall(function()
-            loadedObjects = game:GetObjects("rbxassetid://" .. tostring(assetId))
-        end)
-        if not loadedObjects then
-            pcall(function()
-                local model = InsertService:LoadAsset(assetId)
-                if model then loadedObjects = {model} end
-            end)
-        end
-
-        if loadedObjects then
-            for _, obj in ipairs(loadedObjects) do
-                if obj then
-                    if obj:IsA("Model") or obj:IsA("Folder") then
-                        for _, desc in ipairs(obj:GetDescendants()) do
-                            if desc:IsA("Accessory") then
-                                local clonedAcc = desc:Clone()
-                                clonedAcc.Parent = char
-                                successCount = successCount + 1
-                            elseif desc:IsA("MeshPart") or desc:IsA("BasePart") then
-                                local clonedPart = desc:Clone()
-                                clonedPart.CFrame = head.CFrame
-                                local weld = Instance.new("WeldConstraint")
-                                weld.Part0 = head
-                                weld.Part1 = clonedPart
-                                weld.Parent = clonedPart
-                                clonedPart.Parent = char
-                                successCount = successCount + 1
-                            end
-                        end
-                        obj:Destroy()
-                    elseif obj:IsA("Accessory") then
-                        obj.Parent = char
-                        successCount = successCount + 1
-                    elseif obj:IsA("MeshPart") or obj:IsA("BasePart") then
-                        obj.CFrame = head.CFrame
-                        local weld = Instance.new("WeldConstraint")
-                        weld.Part0 = head
-                        weld.Part1 = obj
-                        weld.Parent = obj
-                        obj.Parent = char
-                        successCount = successCount + 1
-                    end
-                    dbg("Successfully injected asset ID: " .. tostring(assetId))
-                end
-            end
-        else
-            dbg("Failed to download asset ID: " .. tostring(assetId))
-        end
-    end
-
-    dbg("Total custom elements applied: " .. successCount)
-    return successCount > 0
-end
-
--- Strict Spectator Text Spoofer (Modifies .Text ONLY, NEVER touches instance .Name)
-local function setViewNameText(text)
-    if not spoofViewName or text == "" then return end
+-- Aggressive Text-Only Spectator Spoofer
+local function updateSpectatorText(targetName, lookName)
+    if not spoofViewName then return end
     pcall(function()
         local roots = {pg}
         pcall(function() table.insert(roots, CoreGui) end)
         
         for _, root in ipairs(roots) do
             for _, g in ipairs(root:GetDescendants()) do
-                -- Strictly check TextLabel or TextButton and modify .Text ONLY (Never touch g.Name)
+                -- STRICTLY check TextLabel or TextButton and modify .Text ONLY. Never touch g.Name!
                 if g:IsA("TextLabel") or g:IsA("TextButton") then
                     local t = g.Text or ""
-                    local lower = string.lower(t)
-                    if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") or lower:find("cam") then
-                        g.Text = "Viewing " .. text
+                    if t ~= "" then
+                        -- If the text contains the target player's name, replace it with the look name
+                        if targetName ~= "" and string.find(t, targetName, 1, true) then
+                            local newText = t:gsub(targetName, lookName)
+                            if newText ~= t then
+                                g.Text = newText
+                            end
+                        -- Or if it matches standard spectate UI patterns
+                        local lower = string.lower(t)
+                        if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") then
+                            g.Text = "Viewing " .. lookName
+                        end
                     end
                 end
             end
@@ -183,26 +49,17 @@ local function setViewNameText(text)
     end)
 end
 
-task.spawn(function()
-    while true do
-        task.wait(0.15)
-        if spoofViewName and viewNameOverride ~= "" then
-            setViewNameText(viewNameOverride)
-        end
-    end
-end)
-
 -- GUI Construction
 local gui = Instance.new("ScreenGui")
-gui.Name = "AvatarSpoofGui"
+gui.Name = "SpectateSpoofGui"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 pcall(function() gui.Parent = CoreGui end)
 if not gui.Parent then gui.Parent = pg end
 
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(320, 420)
-main.Position = UDim2.new(0.5, -160, 0.2, 0)
+main.Size = UDim2.fromOffset(300, 260)
+main.Position = UDim2.new(0.5, -150, 0.3, 0)
 main.BackgroundColor3 = Color3.fromRGB(22, 12, 8)
 main.Active = true
 main.Draggable = true
@@ -213,7 +70,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 24)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "Client Mesh & Spectate Text Fix"
+title.Text = "Spectator Text Spoofer"
 title.TextColor3 = Color3.fromRGB(255, 180, 100)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
@@ -262,48 +119,35 @@ local function mkBox(y, placeholder, default)
     return b
 end
 
-mkLabel(32, "Target player username")
-local targetBox = mkBox(48, "e.g. naimradio66", "naimradio66")
+mkLabel(36, "Target username being spectated")
+local targetBox = mkBox(52, "e.g. naimradio66", "naimradio66")
 
-mkLabel(80, "Look source username / ID")
-local lookBox = mkBox(96, "e.g. m_809x", "m_809x")
-
-local applyBtn = Instance.new("TextButton")
-applyBtn.Size = UDim2.new(1, -24, 0, 32)
-applyBtn.Position = UDim2.new(0, 12, 0, 132)
-applyBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 25)
-applyBtn.Text = "Apply Client Look & Meshes"
-applyBtn.TextColor3 = Color3.new(1, 1, 1)
-applyBtn.Font = Enum.Font.GothamBold
-applyBtn.TextSize = 13
-applyBtn.Parent = main
-Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 6)
-
-mkLabel(176, "Spectate spoof name override")
-local viewBox = mkBox(192, "Name to display on spectator tag", "m_809x")
+mkLabel(88, "Replacement display name (.Text)")
+local lookBox = mkBox(104, "e.g. m_809x", "m_809x")
 
 local viewBtn = Instance.new("TextButton")
-viewBtn.Size = UDim2.new(1, -24, 0, 26)
-viewBtn.Position = UDim2.new(0, 12, 0, 226)
+viewBtn.Size = UDim2.new(1, -24, 0, 30)
+viewBtn.Position = UDim2.new(0, 12, 0, 142)
 viewBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
-viewBtn.Text = "Spoof view name: OFF"
+viewBtn.Text = "Spectate Spoofer: OFF"
 viewBtn.TextColor3 = Color3.new(1, 1, 1)
 viewBtn.Font = Enum.Font.GothamBold
-viewBtn.TextSize = 11
+viewBtn.TextSize = 12
 viewBtn.Parent = main
 Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
+
 viewBtn.MouseButton1Click:Connect(function()
     spoofViewName = not spoofViewName
-    viewNameOverride = viewBox.Text ~= "" and viewBox.Text or lookBox.Text
-    viewBtn.Text = spoofViewName and "Spoof view name: ON" or "Spoof view name: OFF"
+    viewBtn.Text = spoofViewName and "Spectate Spoofer: ON" or "Spectate Spoofer: OFF"
     viewBtn.BackgroundColor3 = spoofViewName and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
+    dbg("Spoofer toggled: " .. tostring(spoofViewName))
 end)
 
 local dbgLabel = Instance.new("TextLabel")
-dbgLabel.Size = UDim2.new(1, -24, 0, 100)
-dbgLabel.Position = UDim2.new(0, 12, 0, 262)
+dbgLabel.Size = UDim2.new(1, -24, 0, 56)
+dbgLabel.Position = UDim2.new(0, 12, 0, 186)
 dbgLabel.BackgroundColor3 = Color3.fromRGB(10, 6, 4)
-dbgLabel.Text = "Debug log..."
+dbgLabel.Text = "Status: Ready..."
 dbgLabel.TextColor3 = Color3.fromRGB(140, 220, 140)
 dbgLabel.Font = Enum.Font.Code
 dbgLabel.TextSize = 10
@@ -312,36 +156,16 @@ dbgLabel.TextYAlignment = Enum.TextYAlignment.Top
 dbgLabel.TextWrapped = true
 dbgLabel.Parent = main
 Instance.new("UICorner", dbgLabel).CornerRadius = UDim.new(0, 6)
-_G.__AvatarDebugLabel = dbgLabel
+_G.__SpectateDebugLabel = dbgLabel
 
-local copyBtn = Instance.new("TextButton")
-copyBtn.Size = UDim2.new(1, -24, 0, 20)
-copyBtn.Position = UDim2.new(0, 12, 0, 370)
-copyBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 20)
-copyBtn.Text = "Copy debug to clipboard"
-copyBtn.TextColor3 = Color3.fromRGB(255, 200, 140)
-copyBtn.Font = Enum.Font.Gotham
-copyBtn.TextSize = 11
-copyBtn.Parent = main
-Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 4)
-copyBtn.MouseButton1Click:Connect(function()
-    local text = table.concat(debugLines, "\n")
-    pcall(function()
-        if setclipboard then setclipboard(text)
-        elseif toclipboard then toclipboard(text)
+-- Main Loop checking text properties continuously
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if spoofViewName then
+            updateSpectatorText(targetBox.Text, lookBox.Text)
         end
-    end)
-    dbg("Debug copied to clipboard.")
+    end
 end)
 
-applyBtn.MouseButton1Click:Connect(function()
-    applyBtn.Text = "..."
-    task.spawn(function()
-        local ok = applyCustomLook(targetBox.Text, lookBox.Text)
-        applyBtn.Text = ok and "Applied!" or "Failed"
-        task.wait(1.5)
-        applyBtn.Text = "Apply Client Look & Meshes"
-    end)
-end)
-
-dbg("Ready. LocalPlayer=" .. lp.Name)
+dbg("Loaded successfully. Set targets and toggle ON.")
