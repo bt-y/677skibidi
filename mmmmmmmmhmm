@@ -1058,7 +1058,7 @@ local function showModes()
     hdr.Parent = content
 
     local modes = {
-        {"FlatUnder", "Flat under map (8 studs below, stays down)"},
+        {"FlatUnder", "Flat on coin (lying down, not underground)"},
         {"Surface", "Walk above coin"},
         {"Tween", "Smooth tween to coin"},
         {"TPTouch", "Fast teleport + touch"},
@@ -1156,22 +1156,13 @@ end
 -- TPTouch: CFrame to coin + touch
 -- Random: random target + surface
 -- =========================================================
+-- Flat on surface at coin height (not underground)
 local FLAT = CFrame.Angles(math.rad(90), 0, 0)
-local UNDER_OFFSET = 8
 
-local function underPos(coinPos)
-    return Vector3.new(coinPos.X, coinPos.Y - UNDER_OFFSET, coinPos.Z)
-end
-
-local function moveFlatUnder(root, coinPos, speed)
+local function moveFlat(root, coinPos, speed)
     setNoclip(true)
-    local dest = underPos(coinPos)
+    local dest = Vector3.new(coinPos.X, coinPos.Y, coinPos.Z)
     local start = root.Position
-    -- if stuck in void, snap to correct depth first
-    if math.abs(start.Y - dest.Y) > 15 then
-        root.CFrame = CFrame.new(start.X, dest.Y, start.Z) * FLAT
-        start = root.Position
-    end
     local dist = (dest - start).Magnitude
     speed = math.clamp(speed or 23, 12, 50)
     if dist < 1.5 then
@@ -1184,7 +1175,6 @@ local function moveFlatUnder(root, coinPos, speed)
     while root and root.Parent do
         local a = math.min((tick() - t0) / duration, 1)
         local p = start:Lerp(dest, a)
-        p = Vector3.new(p.X, dest.Y, p.Z)
         root.CFrame = CFrame.new(p) * FLAT
         root.AssemblyLinearVelocity = Vector3.zero
         if a >= 1 then return true end
@@ -1260,16 +1250,16 @@ task.spawn(function()
                             local coinPos = target.Position
 
                             if FARM_MODE == "FlatUnder" then
+                                -- Flat on surface at coin (not under map)
                                 setNoclip(true)
                                 hum.AutoRotate = false
                                 hum.PlatformStand = false
                                 root.Anchored = false
-                                moveFlatUnder(root, coinPos, SP)
-                                local dest = underPos(coinPos)
+                                moveFlat(root, coinPos, SP)
                                 local tWait = tick()
-                                while tick() - tWait < 0.6 do
+                                while tick() - tWait < 0.55 do
                                     if not (root and root.Parent and target and target.Parent) then break end
-                                    root.CFrame = CFrame.new(dest) * FLAT
+                                    root.CFrame = CFrame.new(coinPos) * FLAT
                                     root.AssemblyLinearVelocity = Vector3.zero
                                     touchCoin(target, root)
                                     if realCoins > before then break end
