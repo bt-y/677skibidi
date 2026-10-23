@@ -1,10 +1,10 @@
--- Apply LOOK to TARGET player with recursive asset unpacking and robust attachment injection
+-- Apply LOOK to TARGET player with direct asset insertion handling mesh/accessory IDs
 local Players = game:GetService("Players")
+local InsertService = game:GetService("InsertService")
 local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
--- Specific custom assets provided for the look
 local CUSTOM_ASSETS = {
     12834852093, -- Funny Meme Head
     6202215246,  -- Pink Head Bow
@@ -54,7 +54,7 @@ local function applyCustomLook(targetName, lookSource)
     dbg("=== APPLY START ===")
     local targetPl = getPlayerByName(targetName)
     if not targetPl then
-        dbg("ERROR: Target player not found in server")
+        dbg("ERROR: Target player not found")
         return false
     end
     
@@ -64,19 +64,13 @@ local function applyCustomLook(targetName, lookSource)
         return false
     end
 
-    local head = char:FindFirstChild("Head")
-    if not head then
-        dbg("ERROR: Target head missing")
-        return false
-    end
-
     dbg("Target found: " .. targetPl.Name)
     stripVisuals(char)
     task.wait(0.1)
 
     local addedCount = 0
 
-    -- 1. Pull base clothing descriptions (Shirts/Pants)
+    -- Pull User Description Package shirts/pants
     local targetUserId = tonumber(lookSource)
     if not targetUserId then
         pcall(function() targetUserId = Players:GetUserIdFromNameAsync(lookSource) end)
@@ -102,45 +96,47 @@ local function applyCustomLook(targetName, lookSource)
         end)
     end
 
-    -- 2. Recursively load and unpack custom assets (Accessories, Meshes, and Heads)
+    -- Directly load and insert custom assets using InsertService / GetObjects
     for _, assetId in ipairs(CUSTOM_ASSETS) do
+        local loadedObj = nil
         pcall(function()
-            local content = game:GetObjects("rbxassetid://" .. tostring(assetId))
-            for _, obj in ipairs(content) do
-                if obj then
-                    if obj:IsA("Accessory") then
-                        obj.Parent = char
-                        addedCount = addedCount + 1
-                        dbg("Injected Accessory: " .. tostring(assetId))
-                    elseif obj:IsA("Model") then
-                        for _, desc in ipairs(obj:GetDescendants()) do
-                            if desc:IsA("Accessory") then
-                                desc:Clone().Parent = char
-                                addedCount = addedCount + 1
-                            elseif desc:IsA("MeshPart") or desc:IsA("SpecialMesh") then
-                                desc:Clone().Parent = head
-                                addedCount = addedCount + 1
-                            end
-                        end
-                        obj:Destroy()
-                    elseif obj:IsA("MeshPart") or obj:IsA("SpecialMesh") then
-                        obj.Parent = head
-                        addedCount = addedCount + 1
-                        dbg("Injected Mesh into Head: " .. tostring(assetId))
-                    else
-                        obj.Parent = char
-                        addedCount = addedCount + 1
+            loadedObj = InsertService:LoadAsset(assetId)
+        end)
+        if not loadedObj then
+            pcall(function()
+                local objs = game:GetObjects("rbxassetid://" .. tostring(assetId))
+                if objs and objs[1] then loadedObj = objs[1] end
+            end)
+        end
+
+        if loadedObj then
+            if loadedObj:IsA("Model") then
+                for _, descendant in ipairs(loadedObj:GetDescendants()) do
+                    if descendant:IsA("Accessory") or descendant:IsA("MeshPart") or descendant:IsA("SpecialMesh") or descendant:IsA("BasePart") then
+                        pcall(function()
+                            descendant:Clone().Parent = char
+                            addedCount = addedCount + 1
+                        end)
                     end
                 end
+                loadedObj:Destroy()
+            else
+                pcall(function()
+                    loadedObj.Parent = char
+                    addedCount = addedCount + 1
+                end)
             end
-        end)
+            dbg("Injected asset item: " .. tostring(assetId))
+        else
+            dbg("Failed to download asset: " .. tostring(assetId))
+        end
     end
 
-    dbg("Total custom items loaded: " .. addedCount)
+    dbg("Total items injected: " .. addedCount)
     return addedCount > 0
 end
 
--- Aggressive Spectator View Name Spoofer
+-- Spectator View Name Spoofer
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
@@ -170,7 +166,7 @@ task.spawn(function()
     end
 end)
 
--- GUI Construction
+-- UI Construction
 local gui = Instance.new("ScreenGui")
 gui.Name = "AvatarSpoofGui"
 gui.ResetOnSpawn = false
@@ -191,7 +187,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 24)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "Look & Spectate Fix + Log Copy"
+title.Text = "Final Fix: Look & Spectate"
 title.TextColor3 = Color3.fromRGB(255, 180, 100)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
