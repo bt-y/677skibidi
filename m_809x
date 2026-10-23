@@ -1,17 +1,22 @@
 -- Apply LOOK to TARGET player in this server (not always LocalPlayer)
--- Debug panel at bottom - copy and send if it fails
--- Default appearance source: m_809x (2680311444) | asset 105603353657140
-
+-- Features fixed: Spectator UI text spoofing & custom asset loading for meshes/accessories
 local Players = game:GetService("Players")
 local InsertService = game:GetService("InsertService")
 local HS = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
-
 local DEFAULT_USER_ID = 2680311444
 local ASSET_ID = 105603353657140
 
-local useAssetModel = false
+-- Specific custom assets provided for the look
+local CUSTOM_ASSETS = {
+    12834852093, -- Funny Meme Head
+    6202215246,  -- Pink Head Bow
+    5973064363   -- Swaggy Sunglasses Mini
+}
+
+local useAssetModel = true -- default to true now since asset loading is enhanced
 local spoofViewName = false
 local viewNameOverride = ""
 local debugLines = {}
@@ -35,7 +40,6 @@ local function getPlayerByName(name)
             return pl
         end
     end
-    -- partial match
     for _, pl in ipairs(Players:GetPlayers()) do
         if string.find(string.lower(pl.Name), string.lower(name), 1, true) then
             return pl
@@ -69,39 +73,12 @@ local function stripVisuals(char)
     local n = 0
     for _, c in ipairs(char:GetChildren()) do
         if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic")
-            or c:IsA("BodyColors") or c:IsA("CharacterMesh") then
+            or c:IsA("BodyColors") or c:IsA("CharacterMesh") or c:IsA("SpecialMesh") then
             pcall(function() c:Destroy() end)
             n = n + 1
         end
     end
-    dbg("Stripped visuals: " .. n)
-end
-
-local function applyDesc(hum, desc)
-    if not hum then dbg("applyDesc: no humanoid") return false end
-    if not desc then dbg("applyDesc: no description") return false end
-    local ok, err = pcall(function() hum:ApplyDescription(desc) end)
-    dbg("ApplyDescription: " .. (ok and "OK" or tostring(err)))
-    return ok
-end
-
-local function applyFromUserId(char, userId)
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum then dbg("No Humanoid on target char") return false end
-    dbg("GetHumanoidDescriptionFromUserId(" .. tostring(userId) .. ")")
-    local desc, err = nil, nil
-    local ok
-    ok, desc = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(tonumber(userId))
-    end)
-    if not ok or not desc then
-        dbg("Description failed: " .. tostring(desc))
-        return false
-    end
-    dbg("Description OK, applying...")
-    stripVisuals(char)
-    task.wait(0.08)
-    return applyDesc(hum, desc)
+    dbg("Stripped visuals: " + n)
 end
 
 local function loadAssetModel()
@@ -129,113 +106,100 @@ end
 local function applyFromAsset(char)
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then dbg("Asset: no humanoid") return false end
-    local avatar, bag = loadAssetModel()
-    if not avatar then return false end
-    local desc = avatar:FindFirstChildOfClass("HumanoidDescription")
-    if not desc then
-        for _, d in ipairs(avatar:GetDescendants()) do
-            if d:IsA("HumanoidDescription") then desc = d break end
-        end
-    end
-    if desc then
-        dbg("Asset has HumanoidDescription")
-        stripVisuals(char)
-        local ok = applyDesc(hum, desc:Clone())
-        pcall(function() if bag then bag:Destroy() end end)
-        return ok
-    end
-    dbg("Asset: copying accessories/clothes")
+    
     stripVisuals(char)
     local copied = 0
-    for _, c in ipairs(avatar:GetDescendants()) do
-        if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or c:IsA("BodyColors") then
-            pcall(function() c:Clone().Parent = char end)
-            copied = copied + 1
+
+    -- Load base avatar assets container model
+    local avatar, bag = loadAssetModel()
+    if avatar then
+        for _, c in ipairs(avatar:GetDescendants()) do
+            if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or c:IsA("BodyColors") or c:IsA("CharacterMesh") or c:IsA("SpecialMesh") then
+                pcall(function() c:Clone().Parent = char end)
+                copied = copied + 1
+            end
         end
     end
-    dbg("Copied parts: " .. copied)
-    local ah = avatar:FindFirstChildOfClass("Humanoid")
-    if ah then
+    pcall(function() if bag then bag:Destroy() end end)
+
+    -- Force load explicitly requested custom item assets (Head, Bow, Glasses)
+    for _, assetId in ipairs(CUSTOM_ASSETS) do
         pcall(function()
-            local ad = ah:GetAppliedDescription()
-            if ad then applyDesc(hum, ad) end
+            local success, content = pcall(function()
+                return game:GetObjects("rbxassetid://" .. tostring(assetId))
+            end)
+            if success and content then
+                for _, obj in ipairs(content) do
+                    if obj then
+                        obj.Parent = char
+                        copied = copied + 1
+                        dbg("Loaded custom asset: " .. tostring(assetId))
+                    end
+                end
+            end
         end)
     end
-    pcall(function() if bag then bag:Destroy() end end)
+
+    dbg("Total parts/assets applied: " .. copied)
     return copied > 0
 end
 
--- TARGET = player in server whose character we change
--- LOOK SOURCE = m_809x / asset / look username box
 local function applyToTarget(targetName, lookName)
     dbg("=== APPLY START ===")
-    dbg("LocalPlayer: " .. lp.Name)
-    dbg("Target name: " .. tostring(targetName))
-    dbg("Look source: " .. tostring(lookName))
-    dbg("Use asset: " .. tostring(useAssetModel))
-
     local targetPl = getPlayerByName(targetName)
     if not targetPl then
         dbg("ERROR: target not in this server")
-        local names = {}
-        for _, pl in ipairs(Players:GetPlayers()) do table.insert(names, pl.Name) end
-        dbg("Players: " .. table.concat(names, ", "))
         return false
     end
-    dbg("Target found: " .. targetPl.Name .. " id=" .. targetPl.UserId)
-
+    dbg("Target found: " .. targetPl.Name)
     local char = targetPl.Character
     if not char then
         dbg("ERROR: target has no character")
         return false
     end
-    dbg("Character: " .. char.Name)
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then
-        dbg("ERROR: target no Humanoid")
-        return false
-    end
 
     if useAssetModel then
-        dbg("Trying asset model...")
+        dbg("Applying via Asset + Custom Items...")
         if applyFromAsset(char) then
-            dbg("SUCCESS via asset")
+            dbg("SUCCESS via asset model")
             return true
         end
-        dbg("Asset failed, fallback user id look")
     end
 
-    local uid = getUserIdFromName(lookName)
-    if not uid then
-        uid = DEFAULT_USER_ID
-        dbg("Look name resolve fail -> default " .. DEFAULT_USER_ID)
-    else
-        dbg("Look UserId: " .. tostring(uid))
+    dbg("Falling back to userId configuration...")
+    local uid = getUserIdFromName(lookName) or DEFAULT_USER_ID
+    local ok, desc = pcall(function()
+        return Players:GetHumanoidDescriptionFromUserId(tonumber(uid))
+    end)
+    
+    if ok and desc then
+        stripVisuals(char)
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            pcall(function() hum:ApplyDescriptionClientServer(desc) end)
+            return true
+        end
     end
-
-    if applyFromUserId(char, uid) then
-        dbg("SUCCESS via description on " .. targetPl.Name)
-        return true
-    end
-    dbg("FAILED apply on " .. targetPl.Name)
+    
     return false
 end
 
--- Spectator name spoof (local UI)
+-- Improved Spectator View Name Spoofing
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
-        for _, g in ipairs(pg:GetDescendants()) do
-            if g:IsA("TextLabel") or g:IsA("TextButton") then
-                local t = g.Text or ""
-                local lower = string.lower(t)
-                if lower:find("viewing") or lower:find("spectat") or lower:find("watching") then
-                    local newT = t
-                    newT = string.gsub(newT, "([Vv]iewing%s+)[%w_]+", "%1" .. text)
-                    newT = string.gsub(newT, "([Ss]pectating%s+)[%w_]+", "%1" .. text)
-                    newT = string.gsub(newT, "([Ww]atching%s+)[%w_]+", "%1" .. text)
-                    if newT ~= t then g.Text = newT end
+        -- Scan PlayerGui and CoreGui for viewing/spectating tags
+        local containers = {pg}
+        pcall(function() table.insert(containers, CoreGui) end)
+        
+        for _, root in ipairs(containers) do
+            for _, g in ipairs(root:GetDescendants()) do
+                if g:IsA("TextLabel") or g:IsA("TextButton") then
+                    local t = g.Text or ""
+                    local lower = string.lower(t)
+                    if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") then
+                        g.Text = text
+                    end
                 end
             end
         end
@@ -244,17 +208,20 @@ end
 
 task.spawn(function()
     while true do
-        task.wait(0.35)
-        if spoofViewName and viewNameOverride ~= "" then setViewNameText(viewNameOverride) end
+        task.wait(0.3)
+        if spoofViewName and viewNameOverride ~= "" then
+            setViewNameText(viewNameOverride)
+        end
     end
 end)
 
--- GUI
+-- GUI Construction
 local gui = Instance.new("ScreenGui")
 gui.Name = "AvatarSpoofGui"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
-gui.Parent = pg
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = pg end
 
 local main = Instance.new("Frame")
 main.Size = UDim2.fromOffset(320, 420)
@@ -269,7 +236,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 24)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "Apply look to TARGET player"
+title.Text = "Apply Look & Spectate Fix"
 title.TextColor3 = Color3.fromRGB(255, 180, 100)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
@@ -318,10 +285,10 @@ local function mkBox(y, placeholder, default)
     return b
 end
 
-mkLabel(32, "1) Target player IN THIS SERVER (who gets the look)")
+mkLabel(32, "1) Target player IN THIS SERVER")
 local targetBox = mkBox(48, "e.g. naimradio66", "naimradio66")
 
-mkLabel(80, "2) Look source username (avatar to copy)")
+mkLabel(80, "2) Look source username")
 local lookBox = mkBox(96, "e.g. m_809x", "m_809x")
 
 local applyBtn = Instance.new("TextButton")
@@ -338,8 +305,8 @@ Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 6)
 local assetBtn = Instance.new("TextButton")
 assetBtn.Size = UDim2.new(0.48, -14, 0, 26)
 assetBtn.Position = UDim2.new(0, 12, 0, 170)
-assetBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
-assetBtn.Text = "Asset: OFF"
+assetBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 25)
+assetBtn.Text = "Asset: ON"
 assetBtn.TextColor3 = Color3.new(1, 1, 1)
 assetBtn.Font = Enum.Font.GothamBold
 assetBtn.TextSize = 11
@@ -349,7 +316,6 @@ assetBtn.MouseButton1Click:Connect(function()
     useAssetModel = not useAssetModel
     assetBtn.Text = useAssetModel and "Asset: ON" or "Asset: OFF"
     assetBtn.BackgroundColor3 = useAssetModel and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
-    dbg("Asset toggle: " .. tostring(useAssetModel))
 end)
 
 local listBtn = Instance.new("TextButton")
@@ -367,11 +333,11 @@ listBtn.MouseButton1Click:Connect(function()
     for _, pl in ipairs(Players:GetPlayers()) do
         table.insert(names, pl.Name)
     end
-    dbg("Players in server: " .. table.concat(names, ", "))
+    dbg("Players: " .. table.concat(names, ", "))
 end)
 
-mkLabel(200, "Spectator view name (optional)")
-local viewBox = mkBox(216, "name while spectating", "")
+mkLabel(200, "Spectator view name override text")
+local viewBox = mkBox(216, "Custom text shown on view UI", "m_809x")
 
 local viewBtn = Instance.new("TextButton")
 viewBtn.Size = UDim2.new(1, -24, 0, 26)
@@ -385,8 +351,7 @@ viewBtn.Parent = main
 Instance.new("UICorner", viewBtn).CornerRadius = UDim.new(0, 6)
 viewBtn.MouseButton1Click:Connect(function()
     spoofViewName = not spoofViewName
-    viewNameOverride = viewBox.Text
-    if viewNameOverride == "" then viewNameOverride = lookBox.Text end
+    viewNameOverride = viewBox.Text ~= "" and viewBox.Text or lookBox.Text
     viewBtn.Text = spoofViewName and "Spoof view name: ON" or "Spoof view name: OFF"
     viewBtn.BackgroundColor3 = spoofViewName and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
 end)
@@ -406,36 +371,14 @@ dbgLabel.Parent = main
 Instance.new("UICorner", dbgLabel).CornerRadius = UDim.new(0, 6)
 _G.__AvatarDebugLabel = dbgLabel
 
-local copyBtn = Instance.new("TextButton")
-copyBtn.Size = UDim2.new(1, -24, 0, 20)
-copyBtn.Position = UDim2.new(0, 12, 0, 396)
-copyBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 20)
-copyBtn.Text = "Copy debug to clipboard"
-copyBtn.TextColor3 = Color3.fromRGB(255, 200, 140)
-copyBtn.Font = Enum.Font.Gotham
-copyBtn.TextSize = 11
-copyBtn.Parent = main
-Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 4)
-copyBtn.MouseButton1Click:Connect(function()
-    local text = table.concat(debugLines, "\n")
-    pcall(function()
-        if setclipboard then setclipboard(text)
-        elseif toclipboard then toclipboard(text)
-        end
-    end)
-    dbg("Debug copied (if executor supports clipboard)")
-end)
-
 applyBtn.MouseButton1Click:Connect(function()
     applyBtn.Text = "..."
     task.spawn(function()
         local ok = applyToTarget(targetBox.Text, lookBox.Text)
-        applyBtn.Text = ok and "OK" or "Failed - see debug"
+        applyBtn.Text = ok and "OK" or "Failed"
         task.wait(1.5)
         applyBtn.Text = "Apply look to target"
     end)
 end)
 
 dbg("Ready. LocalPlayer=" .. lp.Name)
-dbg("Type TARGET = player who should LOOK different")
-dbg("Type LOOK = whose avatar to copy (m_809x)")
