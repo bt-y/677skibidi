@@ -1,18 +1,10 @@
--- Bulletproof Master GUI Script: Avatar Look, Spectate Spoofer, & Workspace Model Renamer
-task.wait(0.5)
-
+-- Master GUI Script: Avatar Look, Spectator Text Spoofer, & Workspace Model Renamer
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
-local InsertService = game:GetService("InsertService")
 
 local lp = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local pg = lp:WaitForChild("PlayerGui", 5)
-
--- Assets for Avatar Look
-local MEME_HEAD_ID = 12834852093
-local BOW_ID = 6202215246
-local GLASSES_ID = 5973064363
+local pg = lp:WaitForChild("PlayerGui", 10)
 
 local spoofViewName = false
 local workspaceModeActive = false
@@ -41,18 +33,6 @@ local function getPlayerByName(name)
     return nil
 end
 
-local function stripVisuals(char)
-    local n = 0
-    for _, c in ipairs(char:GetDescendants()) do
-        if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic")
-            or c:IsA("BodyColors") or c:IsA("CharacterMesh") or c:IsA("SpecialMesh") then
-            pcall(function() c:Destroy() end)
-            n = n + 1
-        end
-    end
-    dbg("Stripped visuals: " .. n)
-end
-
 local function applyCustomLook(targetName, lookSource)
     dbg("=== APPLY LOOK START ===")
     local targetPl = getPlayerByName(targetName)
@@ -66,15 +46,6 @@ local function applyCustomLook(targetName, lookSource)
         dbg("ERROR: Target character missing")
         return false
     end
-
-    local head = char:FindFirstChild("Head")
-    if not head then
-        dbg("ERROR: Target head missing")
-        return false
-    end
-
-    stripVisuals(char)
-    task.wait(0.1)
 
     local successCount = 0
     local targetUserId = tonumber(lookSource)
@@ -102,54 +73,13 @@ local function applyCustomLook(targetName, lookSource)
         end)
     end
 
-    -- Inject Meme Head
-    pcall(function()
-        for _, child in ipairs(head:GetChildren()) do
-            if child:IsA("SpecialMesh") or child:IsA("CylinderMesh") then child:Destroy() end
-        end
-        local mesh = Instance.new("SpecialMesh")
-        mesh.MeshType = Enum.MeshType.FileMesh
-        mesh.MeshId = "rbxassetid://" .. tostring(MEME_HEAD_ID)
-        mesh.Parent = head
-        successCount = successCount + 1
-    end)
-
-    local function attachAccessory(assetId)
-        pcall(function()
-            local acc = Instance.new("Accessory")
-            local handle = Instance.new("Part")
-            handle.Name = "Handle"
-            handle.Size = Vector3.new(1, 1, 1)
-            handle.Transparency = 1
-            handle.CanCollide = false
-            
-            local mesh = Instance.new("SpecialMesh")
-            mesh.MeshType = Enum.MeshType.FileMesh
-            mesh.MeshId = "rbxassetid://" .. tostring(assetId)
-            mesh.Parent = handle
-            
-            handle.Parent = acc
-            local weld = Instance.new("WeldConstraint")
-            weld.Part0 = head
-            weld.Part1 = handle
-            weld.Parent = handle
-            handle.CFrame = head.CFrame
-            
-            acc.Parent = char
-            successCount = successCount + 1
-        end)
-    end
-
-    attachAccessory(BOW_ID)
-    attachAccessory(GLASSES_ID)
-
-    dbg("Look applied successfully! Items: " + successCount)
-    return successCount > 0
+    dbg("Look applied. Items: " .. successCount)
+    return true
 end
 
--- Safe Spectator Text Spoofer (Changes .Text ONLY)
-local function updateSpectatorText(text)
-    if not spoofViewName or text == "" then return end
+-- Mode 1: Spectator Text Spoofer
+local function updateSpectatorText(targetName, lookName)
+    if not spoofViewName then return end
     pcall(function()
         local roots = {pg}
         pcall(function() table.insert(roots, CoreGui) end)
@@ -159,9 +89,12 @@ local function updateSpectatorText(text)
                 if g:IsA("TextLabel") or g:IsA("TextButton") then
                     local t = g.Text or ""
                     if t ~= "" then
+                        if targetName ~= "" and string.find(t, targetName, 1, true) then
+                            g.Text = t:gsub(targetName, lookName)
+                        end
                         local lower = string.lower(t)
                         if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") then
-                            g.Text = "Viewing " .. text
+                            g.Text = "Viewing " .. lookName
                         end
                     end
                 end
@@ -170,37 +103,30 @@ local function updateSpectatorText(text)
     end)
 end
 
--- Workspace Model Name Changer Mode 2
+-- Mode 2: Workspace Model Name Changer (naimradio66 -> m_809x)
 local function updateWorkspaceModelName()
     if not workspaceModeActive then return end
     pcall(function()
         for _, obj in ipairs(Workspace:GetChildren()) do
             if obj:IsA("Model") and string.lower(obj.Name) == string.lower("naimradio66") then
                 obj.Name = "m_809x"
-                dbg("Workspace model renamed to m_809x")
+                dbg("Workspace model 'naimradio66' renamed to 'm_809x'")
             end
         end
     end)
 end
 
--- GUI Construction (Protected Startup)
-local guiSuccess, gui = pcall(function()
-    local g = Instance.new("ScreenGui")
-    g.Name = "MasterControlGui"
-    g.ResetOnSpawn = false
-    g.IgnoreGuiInset = true
-    pcall(function() g.Parent = CoreGui end)
-    if not g.Parent then g.Parent = pg end
-    return g
-end)
-
-if not guiSuccess or not gui then
-    return
-end
+-- GUI Creation
+local gui = Instance.new("ScreenGui")
+gui.Name = "MasterControlGui"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = pg end
 
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(340, 470)
-main.Position = UDim2.new(0.5, -170, 0.15, 0)
+main.Size = UDim2.fromOffset(340, 440)
+main.Position = UDim2.new(0.5, -170, 0.2, 0)
 main.BackgroundColor3 = Color3.fromRGB(22, 12, 8)
 main.Active = true
 main.Draggable = true
@@ -211,7 +137,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 24)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "Avatar, Spectate & Workspace Spoofer"
+title.Text = "Master Spoofer & Control Panel"
 title.TextColor3 = Color3.fromRGB(255, 180, 100)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
@@ -270,7 +196,7 @@ local applyBtn = Instance.new("TextButton")
 applyBtn.Size = UDim2.new(1, -24, 0, 30)
 applyBtn.Position = UDim2.new(0, 12, 0, 126)
 applyBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 25)
-applyBtn.Text = "Apply Look & Meshes"
+applyBtn.Text = "Apply Look"
 applyBtn.TextColor3 = Color3.new(1, 1, 1)
 applyBtn.Font = Enum.Font.GothamBold
 applyBtn.TextSize = 12
@@ -301,25 +227,25 @@ local wsBtn = Instance.new("TextButton")
 wsBtn.Size = UDim2.new(1, -24, 0, 26)
 wsBtn.Position = UDim2.new(0, 12, 0, 246)
 wsBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
-wsBtn.Text = "Workspace Model Rename Mode: OFF"
+wsBtn.Text = "Workspace Rename (naimradio66 -> m_809x): OFF"
 wsBtn.TextColor3 = Color3.new(1, 1, 1)
 wsBtn.Font = Enum.Font.GothamBold
-wsBtn.TextSize = 11
+wsBtn.TextSize = 10
 wsBtn.Parent = main
 Instance.new("UICorner", wsBtn).CornerRadius = UDim.new(0, 6)
 
 wsBtn.MouseButton1Click:Connect(function()
     workspaceModeActive = not workspaceModeActive
-    wsBtn.Text = workspaceModeActive and "Workspace Model Rename Mode: ON" or "Workspace Model Rename Mode: OFF"
+    wsBtn.Text = workspaceModeActive and "Workspace Rename: ON" or "Workspace Rename (naimradio66 -> m_809x): OFF"
     wsBtn.BackgroundColor3 = workspaceModeActive and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
-    dbg("Workspace Mode toggled: " .. tostring(workspaceModeActive))
+    dbg("Workspace Rename Mode toggled: " .. tostring(workspaceModeActive))
 end)
 
 local dbgLabel = Instance.new("TextLabel")
-dbgLabel.Size = UDim2.new(1, -24, 0, 110)
+dbgLabel.Size = UDim2.new(1, -24, 0, 80)
 dbgLabel.Position = UDim2.new(0, 12, 0, 282)
 dbgLabel.BackgroundColor3 = Color3.fromRGB(10, 6, 4)
-dbgLabel.Text = "Debug log ready..."
+dbgLabel.Text = "Ready..."
 dbgLabel.TextColor3 = Color3.fromRGB(140, 220, 140)
 dbgLabel.Font = Enum.Font.Code
 dbgLabel.TextSize = 10
@@ -330,33 +256,13 @@ dbgLabel.Parent = main
 Instance.new("UICorner", dbgLabel).CornerRadius = UDim.new(0, 6)
 _G.__MainDebugLabel = dbgLabel
 
-local copyBtn = Instance.new("TextButton")
-copyBtn.Size = UDim2.new(1, -24, 0, 22)
-copyBtn.Position = UDim2.new(0, 12, 0, 400)
-copyBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 20)
-copyBtn.Text = "Copy debug to clipboard"
-copyBtn.TextColor3 = Color3.fromRGB(255, 200, 140)
-copyBtn.Font = Enum.Font.Gotham
-copyBtn.TextSize = 11
-copyBtn.Parent = main
-Instance.new("UICorner", copyBtn).CornerRadius = UDim.new(0, 4)
-copyBtn.MouseButton1Click:Connect(function()
-    local text = table.concat(debugLines, "\n")
-    pcall(function()
-        if setclipboard then setclipboard(text)
-        elseif toclipboard then toclipboard(text)
-        end
-    end)
-    dbg("Debug copied.")
-end)
-
 applyBtn.MouseButton1Click:Connect(function()
     applyBtn.Text = "..."
     task.spawn(function()
         local ok = applyCustomLook(targetBox.Text, lookBox.Text)
         applyBtn.Text = ok and "Applied!" or "Failed"
         task.wait(1.5)
-        applyBtn.Text = "Apply Look & Meshes"
+        applyBtn.Text = "Apply Look"
     end)
 end)
 
@@ -365,7 +271,7 @@ task.spawn(function()
     while true do
         task.wait(0.15)
         if spoofViewName then
-            updateSpectatorText(viewBox.Text ~= "" and viewBox.Text or "m_809x")
+            updateSpectatorText(targetBox.Text, viewBox.Text ~= "" and viewBox.Text or "m_809x")
         end
         if workspaceModeActive then
             updateWorkspaceModelName()
@@ -373,4 +279,4 @@ task.spawn(function()
     end
 end)
 
-dbg("Master UI Loaded successfully.")
+dbg("GUI Loaded successfully.")
