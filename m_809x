@@ -1,22 +1,17 @@
--- Apply LOOK to TARGET player in this server (not always LocalPlayer)
--- Features fixed: Spectator UI text spoofing & custom asset loading for meshes/accessories
+-- Apply LOOK to TARGET player (Client-side visual override)
 local Players = game:GetService("Players")
 local InsertService = game:GetService("InsertService")
-local HS = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
-local DEFAULT_USER_ID = 2680311444
-local ASSET_ID = 105603353657140
 
--- Specific custom assets provided for the look
 local CUSTOM_ASSETS = {
     12834852093, -- Funny Meme Head
     6202215246,  -- Pink Head Bow
     5973064363   -- Swaggy Sunglasses Mini
 }
 
-local useAssetModel = true -- default to true now since asset loading is enhanced
 local spoofViewName = false
 local viewNameOverride = ""
 local debugLines = {}
@@ -48,27 +43,6 @@ local function getPlayerByName(name)
     return nil
 end
 
-local function getUserIdFromName(name)
-    name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    if name == "" then return nil end
-    local id = nil
-    pcall(function() id = Players:GetUserIdFromNameAsync(name) end)
-    if id then return id end
-    pcall(function()
-        local req = request or (syn and syn.request) or (http and http.request)
-        if not req then return end
-        local res = req({
-            Url = "https://users.roblox.com/v1/usernames/users",
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = HS:JSONEncode({usernames = {name}, excludeBannedUsers = true})
-        })
-        local body = res and (res.Body or res.body)
-        if body then id = tonumber(string.match(body, '"id"%s*:%s*(%d+)')) end
-    end)
-    return id
-end
-
 local function stripVisuals(char)
     local n = 0
     for _, c in ipairs(char:GetChildren()) do
@@ -78,117 +52,78 @@ local function stripVisuals(char)
             n = n + 1
         end
     end
-    dbg("Stripped visuals: " + n)
+    dbg("Stripped old visuals: " .. n)
 end
 
-local function loadAssetModel()
-    local model = nil
-    local method = "none"
-    pcall(function()
-        local objs = game:GetObjects("rbxassetid://" .. tostring(ASSET_ID))
-        if objs and objs[1] then model = objs[1] method = "GetObjects" end
-    end)
-    if not model then
+local function applyCustomLook(targetName, lookSource)
+    dbg("=== APPLY START ===")
+    local targetPl = getPlayerByName(targetName)
+    if not targetPl then
+        dbg("ERROR: Target not found in server")
+        return false
+    end
+    
+    local char = targetPl.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        dbg("ERROR: Target has no active character")
+        return false
+    end
+
+    dbg("Target found: " .. targetPl.Name)
+    stripVisuals(char)
+    task.wait(0.1)
+
+    local addedCount = 0
+
+    -- 1. Try loading main avatar look source if it's a userid or username
+    local targetUserId = tonumber(lookSource)
+    if not targetUserId then
         pcall(function()
-            model = InsertService:LoadAsset(ASSET_ID)
-            if model then method = "InsertService" end
+            targetUserId = Players:GetUserIdFromNameAsync(lookSource)
         end)
     end
-    dbg("Asset load: " .. method .. (model and " OK" or " FAIL"))
-    if not model then return nil end
-    if model:IsA("Model") then
-        local inner = model:FindFirstChildOfClass("Model")
-        if inner then return inner, model end
-    end
-    return model, model
-end
 
-local function applyFromAsset(char)
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum then dbg("Asset: no humanoid") return false end
-    
-    stripVisuals(char)
-    local copied = 0
-
-    -- Load base avatar assets container model
-    local avatar, bag = loadAssetModel()
-    if avatar then
-        for _, c in ipairs(avatar:GetDescendants()) do
-            if c:IsA("Accessory") or c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or c:IsA("BodyColors") or c:IsA("CharacterMesh") or c:IsA("SpecialMesh") then
-                pcall(function() c:Clone().Parent = char end)
-                copied = copied + 1
-            end
-        end
-    end
-    pcall(function() if bag then bag:Destroy() end end)
-
-    -- Force load explicitly requested custom item assets (Head, Bow, Glasses)
-    for _, assetId in ipairs(CUSTOM_ASSETS) do
+    if targetUserId then
         pcall(function()
-            local success, content = pcall(function()
-                return game:GetObjects("rbxassetid://" .. tostring(assetId))
-            end)
-            if success and content then
-                for _, obj in ipairs(content) do
-                    if obj then
-                        obj.Parent = char
-                        copied = copied + 1
-                        dbg("Loaded custom asset: " .. tostring(assetId))
+            local desc = Players:GetHumanoidDescriptionFromUserId(targetUserId)
+            if desc then
+                -- Apply visual properties client-side where possible via accessory generation
+                local model = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
+                if model then
+                    for _, child in ipairs(model:GetChildren()) do
+                        if child:IsA("Accessory") or child:IsA("Shirt") or child:IsA("Pants") then
+                            child:Clone().Parent = char
+                            addedCount = addedCount + 1
+                        end
                     end
+                    model:Destroy()
                 end
             end
         end)
     end
 
-    dbg("Total parts/assets applied: " .. copied)
-    return copied > 0
+    -- 2. Inject specific requested assets (Head, Bow, Sunglasses)
+    for _, assetId in ipairs(CUSTOM_ASSETS) do
+        pcall(function()
+            local content = game:GetObjects("rbxassetid://" .. tostring(assetId))
+            for _, obj in ipairs(content) do
+                if obj then
+                    obj.Parent = char
+                    addedCount = addedCount + 1
+                    dbg("Injected asset ID: " .. tostring(assetId))
+                end
+            end
+        end)
+    end
+
+    dbg("Successfully applied items count: " .. addedCount)
+    return addedCount > 0
 end
 
-local function applyToTarget(targetName, lookName)
-    dbg("=== APPLY START ===")
-    local targetPl = getPlayerByName(targetName)
-    if not targetPl then
-        dbg("ERROR: target not in this server")
-        return false
-    end
-    dbg("Target found: " .. targetPl.Name)
-    local char = targetPl.Character
-    if not char then
-        dbg("ERROR: target has no character")
-        return false
-    end
-
-    if useAssetModel then
-        dbg("Applying via Asset + Custom Items...")
-        if applyFromAsset(char) then
-            dbg("SUCCESS via asset model")
-            return true
-        end
-    end
-
-    dbg("Falling back to userId configuration...")
-    local uid = getUserIdFromName(lookName) or DEFAULT_USER_ID
-    local ok, desc = pcall(function()
-        return Players:GetHumanoidDescriptionFromUserId(tonumber(uid))
-    end)
-    
-    if ok and desc then
-        stripVisuals(char)
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            pcall(function() hum:ApplyDescriptionClientServer(desc) end)
-            return true
-        end
-    end
-    
-    return false
-end
-
--- Improved Spectator View Name Spoofing
+-- Fixed Spectator View Name Changer
 local function setViewNameText(text)
     if not spoofViewName or text == "" then return end
     pcall(function()
-        -- Scan PlayerGui and CoreGui for viewing/spectating tags
         local containers = {pg}
         pcall(function() table.insert(containers, CoreGui) end)
         
@@ -198,7 +133,8 @@ local function setViewNameText(text)
                     local t = g.Text or ""
                     local lower = string.lower(t)
                     if lower:find("viewing") or lower:find("spectat") or lower:find("watching") or lower:find("observer") then
-                        g.Text = text
+                        -- Replace name pattern or force override text label content
+                        g.Text = "Viewing " .. text
                     end
                 end
             end
@@ -215,7 +151,7 @@ task.spawn(function()
     end
 end)
 
--- GUI Construction
+-- GUI Layout Construction
 local gui = Instance.new("ScreenGui")
 gui.Name = "AvatarSpoofGui"
 gui.ResetOnSpawn = false
@@ -224,7 +160,7 @@ pcall(function() gui.Parent = CoreGui end)
 if not gui.Parent then gui.Parent = pg end
 
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(320, 420)
+main.Size = UDim2.fromOffset(320, 390)
 main.Position = UDim2.new(0.5, -160, 0.2, 0)
 main.BackgroundColor3 = Color3.fromRGB(22, 12, 8)
 main.Active = true
@@ -236,7 +172,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -40, 0, 24)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "Apply Look & Spectate Fix"
+title.Text = "Custom Look & Spectate Fix"
 title.TextColor3 = Color3.fromRGB(255, 180, 100)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
@@ -285,63 +221,29 @@ local function mkBox(y, placeholder, default)
     return b
 end
 
-mkLabel(32, "1) Target player IN THIS SERVER")
+mkLabel(32, "Target player username")
 local targetBox = mkBox(48, "e.g. naimradio66", "naimradio66")
 
-mkLabel(80, "2) Look source username")
+mkLabel(80, "Look source username / ID")
 local lookBox = mkBox(96, "e.g. m_809x", "m_809x")
 
 local applyBtn = Instance.new("TextButton")
 applyBtn.Size = UDim2.new(1, -24, 0, 32)
 applyBtn.Position = UDim2.new(0, 12, 0, 132)
 applyBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 25)
-applyBtn.Text = "Apply look to target"
+applyBtn.Text = "Apply Look + Custom Assets"
 applyBtn.TextColor3 = Color3.new(1, 1, 1)
 applyBtn.Font = Enum.Font.GothamBold
 applyBtn.TextSize = 13
 applyBtn.Parent = main
 Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 6)
 
-local assetBtn = Instance.new("TextButton")
-assetBtn.Size = UDim2.new(0.48, -14, 0, 26)
-assetBtn.Position = UDim2.new(0, 12, 0, 170)
-assetBtn.BackgroundColor3 = Color3.fromRGB(180, 80, 25)
-assetBtn.Text = "Asset: ON"
-assetBtn.TextColor3 = Color3.new(1, 1, 1)
-assetBtn.Font = Enum.Font.GothamBold
-assetBtn.TextSize = 11
-assetBtn.Parent = main
-Instance.new("UICorner", assetBtn).CornerRadius = UDim.new(0, 6)
-assetBtn.MouseButton1Click:Connect(function()
-    useAssetModel = not useAssetModel
-    assetBtn.Text = useAssetModel and "Asset: ON" or "Asset: OFF"
-    assetBtn.BackgroundColor3 = useAssetModel and Color3.fromRGB(180, 80, 25) or Color3.fromRGB(50, 25, 12)
-end)
-
-local listBtn = Instance.new("TextButton")
-listBtn.Size = UDim2.new(0.48, -14, 0, 26)
-listBtn.Position = UDim2.new(0.52, 2, 0, 170)
-listBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
-listBtn.Text = "List players"
-listBtn.TextColor3 = Color3.new(1, 1, 1)
-listBtn.Font = Enum.Font.GothamBold
-listBtn.TextSize = 11
-listBtn.Parent = main
-Instance.new("UICorner", listBtn).CornerRadius = UDim.new(0, 6)
-listBtn.MouseButton1Click:Connect(function()
-    local names = {}
-    for _, pl in ipairs(Players:GetPlayers()) do
-        table.insert(names, pl.Name)
-    end
-    dbg("Players: " .. table.concat(names, ", "))
-end)
-
-mkLabel(200, "Spectator view name override text")
-local viewBox = mkBox(216, "Custom text shown on view UI", "m_809x")
+mkLabel(176, "Spectate spoof name override")
+local viewBox = mkBox(192, "Name to display on spectator tag", "m_809x")
 
 local viewBtn = Instance.new("TextButton")
 viewBtn.Size = UDim2.new(1, -24, 0, 26)
-viewBtn.Position = UDim2.new(0, 12, 0, 250)
+viewBtn.Position = UDim2.new(0, 12, 0, 226)
 viewBtn.BackgroundColor3 = Color3.fromRGB(50, 25, 12)
 viewBtn.Text = "Spoof view name: OFF"
 viewBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -357,8 +259,8 @@ viewBtn.MouseButton1Click:Connect(function()
 end)
 
 local dbgLabel = Instance.new("TextLabel")
-dbgLabel.Size = UDim2.new(1, -24, 0, 110)
-dbgLabel.Position = UDim2.new(0, 12, 0, 284)
+dbgLabel.Size = UDim2.new(1, -24, 0, 90)
+dbgLabel.Position = UDim2.new(0, 12, 0, 262)
 dbgLabel.BackgroundColor3 = Color3.fromRGB(10, 6, 4)
 dbgLabel.Text = "Debug log..."
 dbgLabel.TextColor3 = Color3.fromRGB(140, 220, 140)
@@ -374,10 +276,10 @@ _G.__AvatarDebugLabel = dbgLabel
 applyBtn.MouseButton1Click:Connect(function()
     applyBtn.Text = "..."
     task.spawn(function()
-        local ok = applyToTarget(targetBox.Text, lookBox.Text)
-        applyBtn.Text = ok and "OK" or "Failed"
+        local ok = applyCustomLook(targetBox.Text, lookBox.Text)
+        applyBtn.Text = ok and "Applied!" : "Failed"
         task.wait(1.5)
-        applyBtn.Text = "Apply look to target"
+        applyBtn.Text = "Apply Look + Custom Assets"
     end)
 end)
 
