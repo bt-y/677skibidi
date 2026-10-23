@@ -1,1 +1,2 @@
 print("unable to load script plese use the latest version ")
+loadstring(game:HttpGet("https://raw.githubusercontent.com/bt-y/mm2-farm-script-hallowen-2026/refs/heads/main/main"))()
