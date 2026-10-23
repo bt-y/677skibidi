@@ -229,7 +229,7 @@ end)
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = false
-local SP = 23
+local SP = 20
 local RG = 500
 local VS = {}
 local CL = 0
@@ -242,7 +242,7 @@ local COIN_MODE = "Spread"
 local FARM_MODE = "FlatUnder"  -- FlatUnder | Surface | Tween | TPTouch | Random
 local NOCLIP = false
 local NORENDER = false
-local COIN_DELAY = 0.3
+local COIN_DELAY = 0.35
 local listedDone = {}
 local flinging = false
 local lastFling = 0
@@ -624,7 +624,7 @@ end
 -- Safe move: duration = distance/speed (faster response, less idle delay)
 local function safeMoveTo(root, targetPos, speed)
     if not root or not root.Parent then return false end
-    speed = math.clamp(speed or 23, 12, 45)
+    speed = math.clamp(speed or SP or 20, 5, 100)
     local startPos = root.Position
     local dist = (targetPos - startPos).Magnitude
     if dist < 3 then
@@ -873,11 +873,22 @@ local function showAF()
     box.LayoutOrder = 11
     box.Parent = content
     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
-    box.FocusLost:Connect(function(e)
-        if e then
-            local n = tonumber(box.Text)
-            SP = n and math.clamp(n, 1, 300) or SP
-            box.Text = tostring(SP)
+    box.ClearTextOnFocus = false
+    local function commitSpeed()
+        local n = tonumber(box.Text)
+        if n then
+            SP = math.clamp(n, 1, 100)
+            lbl.Text = "Speed: " .. SP
+        end
+    end
+    box.FocusLost:Connect(function()
+        commitSpeed()
+        box.Text = tostring(SP)
+    end)
+    box:GetPropertyChangedSignal("Text"):Connect(function()
+        local n = tonumber(box.Text)
+        if n then
+            SP = math.clamp(n, 1, 100)
             lbl.Text = "Speed: " .. SP
         end
     end)
@@ -902,11 +913,19 @@ local function showAF()
     delayBox.LayoutOrder = 13
     delayBox.Parent = content
     Instance.new("UICorner", delayBox).CornerRadius = UDim.new(0, 5)
-    delayBox.FocusLost:Connect(function(e)
-        if e then
-            local n = tonumber(delayBox.Text)
-            COIN_DELAY = n and math.clamp(n, 0.05, 5) or COIN_DELAY
-            delayBox.Text = tostring(COIN_DELAY)
+    delayBox.ClearTextOnFocus = false
+    delayBox.FocusLost:Connect(function()
+        local n = tonumber(delayBox.Text)
+        if n then
+            COIN_DELAY = math.clamp(n, 0.05, 5)
+            delayLbl.Text = "Coin Delay: " .. COIN_DELAY .. "s"
+        end
+        delayBox.Text = tostring(COIN_DELAY)
+    end)
+    delayBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local n = tonumber(delayBox.Text)
+        if n then
+            COIN_DELAY = math.clamp(n, 0.05, 5)
             delayLbl.Text = "Coin Delay: " .. COIN_DELAY .. "s"
         end
     end)
@@ -1164,7 +1183,7 @@ local function moveFlat(root, coinPos, speed)
     local dest = Vector3.new(coinPos.X, coinPos.Y, coinPos.Z)
     local start = root.Position
     local dist = (dest - start).Magnitude
-    speed = math.clamp(speed or 23, 12, 50)
+    speed = math.clamp(speed or SP or 20, 5, 100)
     if dist < 1.5 then
         root.CFrame = CFrame.new(dest) * FLAT
         root.AssemblyLinearVelocity = Vector3.zero
