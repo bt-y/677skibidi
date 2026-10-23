@@ -33,12 +33,14 @@ local function getPlayerByName(name)
     return nil
 end
 
--- Avatar Changer Function (Shirts & Pants)
+-- =======================================================
+-- AVATAR LOOK CHANGER (Shirts & Pants)
+-- =======================================================
 local function applyCustomLook(tName, lSource)
     dbg("Applying avatar look...")
     local targetPl = getPlayerByName(tName)
     if not targetPl then
-        dbg("Error: Target player not found")
+        dbg("Error: Target player not found in server")
         return false
     end
     
@@ -48,18 +50,20 @@ local function applyCustomLook(tName, lSource)
         return false
     end
 
-    -- Clear old clothes
+    -- Clear existing clothing items
     for _, c in ipairs(char:GetChildren()) do
         if c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") then
             pcall(function() c:Destroy() end)
         end
     end
 
+    -- Resolve User ID
     local targetUserId = tonumber(lSource)
     if not targetUserId then
         pcall(function() targetUserId = Players:GetUserIdFromNameAsync(lSource) end)
     end
 
+    local appliedCount = 0
     if targetUserId then
         pcall(function()
             local desc = Players:GetHumanoidDescriptionFromUserId(targetUserId)
@@ -67,9 +71,10 @@ local function applyCustomLook(tName, lSource)
                 local model = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
                 if model then
                     for _, child in ipairs(model:GetDescendants()) do
-                        if child:IsA("Shirt") or child:IsA("Pants") then
+                        if child:IsA("Shirt") or child:IsA("Pants") or child:IsA("ShirtGraphic") then
                             pcall(function()
                                 child:Clone().Parent = char
+                                appliedCount = appliedCount + 1
                             end)
                         end
                     end
@@ -78,11 +83,19 @@ local function applyCustomLook(tName, lSource)
             end
         end)
     end
-    dbg("Avatar look applied successfully!")
-    return true
+
+    if appliedCount > 0 then
+        dbg("Avatar look applied successfully!")
+        return true
+    else
+        dbg("Failed to load clothing items")
+        return false
+    end
 end
 
--- Instant Spectator Text Spoofer (Flicker-Free Event Listener)
+-- =======================================================
+-- INSTANT SPECTATOR TEXT SPOOFER (Flicker-Free Event Listener)
+-- =======================================================
 local function handleTextLabel(label)
     if label:GetAttribute("SpoofedConnected") then return end
     label:SetAttribute("SpoofedConnected", true)
@@ -104,7 +117,6 @@ local function handleTextLabel(label)
     label:GetPropertyChangedSignal("Text"):Connect(update)
 end
 
--- Scan UI roots for text labels
 local function scanRoots()
     local roots = {pg}
     pcall(function() table.insert(roots, CoreGui) end)
@@ -122,7 +134,9 @@ local function scanRoots()
     end
 end
 
--- Create GUI Safely
+-- =======================================================
+-- GUI CONSTRUCTION
+-- =======================================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MasterSpoofGui"
 ScreenGui.ResetOnSpawn = false
@@ -136,8 +150,8 @@ if not success then
 end
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.fromOffset(320, 360)
-MainFrame.Position = UDim2.new(0.5, -160, 0.25, 0)
+MainFrame.Size = UDim2.fromOffset(320, 370)
+MainFrame.Position = UDim2.new(0.5, -160, 0.2, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(22, 12, 8)
 MainFrame.Active = true
 MainFrame.Draggable = true
@@ -221,8 +235,8 @@ ApplyAvatarBtn.MouseButton1Click:Connect(function()
     lookName = lookBox.Text
     ApplyAvatarBtn.Text = "Applying..."
     task.spawn(function()
-        applyCustomLook(targetName, lookName)
-        ApplyAvatarBtn.Text = "Applied!"
+        local ok = applyCustomLook(targetName, lookName)
+        ApplyAvatarBtn.Text = ok and "Applied!" or "Failed"
         task.wait(1.5)
         ApplyAvatarBtn.Text = "Apply Avatar Look"
     end)
@@ -285,7 +299,7 @@ end)
 
 -- Status Box
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, -24, 0, 70)
+StatusLabel.Size = UDim2.new(1, -24, 0, 80)
 StatusLabel.Position = UDim2.new(0, 12, 0, 254)
 StatusLabel.BackgroundColor3 = Color3.fromRGB(10, 6, 4)
 StatusLabel.Text = "Status: Ready..."
@@ -299,7 +313,7 @@ StatusLabel.Parent = MainFrame
 Instance.new("UICorner", StatusLabel).CornerRadius = UDim.new(0, 6)
 _G.__MainDebugLabel = StatusLabel
 
--- Workspace Loop
+-- Workspace Model Loop
 task.spawn(function()
     while true do
         task.wait(0.2)
@@ -310,7 +324,7 @@ task.spawn(function()
                 for _, obj in ipairs(Workspace:GetChildren()) do
                     if obj:IsA("Model") and string.lower(obj.Name) == string.lower(targetName) then
                         obj.Name = lookName
-                        dbg("Renamed workspace model: " .. targetName .. " -> " .. lookName)
+                        dbg("Renamed model: " .. targetName .. " -> " .. lookName)
                     end
                 end
             end)
@@ -318,4 +332,4 @@ task.spawn(function()
     end
 end)
 
-dbg("GUI Loaded successfully.")
+dbg("Master GUI Loaded successfully.")
