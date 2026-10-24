@@ -279,45 +279,54 @@ local function restoreMovement()
     end)
 end
 
--- Anti-void: only disable kill plane (no spam teleport)
--- Teleport loops were fighting the farm and trapping you under the map
+-- Anti-void: no kill plane + one-shot recover if you fall under the map
 local VOID_ON = true
 local lastVoidBoost = 0
+local lastSafeCF = nil
 local function setVoidProtect(on)
     VOID_ON = on
     pcall(function()
-        if on then
-            workspace.FallenPartsDestroyHeight = -50000
-        else
-            workspace.FallenPartsDestroyHeight = -500
-        end
+        workspace.FallenPartsDestroyHeight = on and -50000 or -500
     end)
 end
 pcall(function() setVoidProtect(true) end)
 
--- Only kill falling velocity if extremely deep. Never CFrame-loop to Y=20.
 task.spawn(function()
     while true do
-        task.wait(0.5)
-        if not VOID_ON then
-            -- still keep kill plane low if turned off mid-farm? no
-        else
-            pcall(function()
+        task.wait(0.35)
+        pcall(function()
+            if VOID_ON then
                 workspace.FallenPartsDestroyHeight = -50000
-            end)
+            end
             local ch = lp.Character
             local root = ch and ch:FindFirstChild("HumanoidRootPart")
-            if root and root.Position.Y < -800 then
-                -- rare emergency: only zero velocity, do not force map height
-                if tick() - lastVoidBoost > 4 then
-                    lastVoidBoost = tick()
-                    pcall(function()
-                        root.AssemblyAngularVelocity = Vector3.zero
-                        root.AssemblyLinearVelocity = Vector3.zero
-                    end)
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            if not root then return end
+            local y = root.Position.Y
+            -- remember last good standing height (on / above map)
+            if y > 5 and y < 500 then
+                lastSafeCF = root.CFrame
+            end
+            -- fell under map / into void while farming or noclip
+            if y < -25 then
+                if tick() - lastVoidBoost < 3 then return end
+                lastVoidBoost = tick()
+                root.AssemblyAngularVelocity = Vector3.zero
+                root.AssemblyLinearVelocity = Vector3.zero
+                if hum then
+                    hum.PlatformStand = false
+                    hum.Sit = false
+                    hum.AutoRotate = true
+                end
+                root.Anchored = false
+                setNoclip(false)
+                if lastSafeCF then
+                    root.CFrame = lastSafeCF + Vector3.new(0, 3, 0)
+                else
+                    root.CFrame = CFrame.new(root.Position.X, 25, root.Position.Z)
                 end
             end
-        end
+        end)
     end
 end)
 
@@ -1225,6 +1234,8 @@ if coinRemote then
             tryFlingIfReady()
             task.wait(0.4)
             if RF and lp.Character then
+                restoreMovement()
+                setNoclip(false)
                 lp.Character:BreakJoints()
             end
         end
@@ -1338,12 +1349,13 @@ task.spawn(function()
                             local coinPos = target.Position
 
                             if FARM_MODE == "FlatUnder" then
-                                -- Flat on surface at coin (not under map)
-                                setNoclip(true)
+                                -- Flat on coin height only (no under-map noclip stay)
                                 hum.AutoRotate = false
                                 hum.PlatformStand = false
                                 root.Anchored = false
+                                setNoclip(true)
                                 moveFlat(root, coinPos, SP)
+                                setNoclip(NOCLIP)
                                 local tWait = tick()
                                 while tick() - tWait < 0.55 do
                                     if not (root and root.Parent and target and target.Parent) then break end
@@ -1372,12 +1384,14 @@ task.spawn(function()
                                     task.wait(0.05)
                                 end
                             elseif FARM_MODE == "TPTouch" then
-                                setNoclip(true)
-                                root.CFrame = CFrame.new(coinPos + Vector3.new(0, 2.5, 0))
-                                touchCoin(target, root)
-                                task.wait(0.08)
-                                touchCoin(target, root)
-                                task.wait(0.08)
+                                if coinPos.Y > -10 and coinPos.Y < 400 then
+                                    setNoclip(true)
+                                    root.CFrame = CFrame.new(coinPos + Vector3.new(0, 2.5, 0))
+                                    touchCoin(target, root)
+                                    task.wait(0.08)
+                                    touchCoin(target, root)
+                                    setNoclip(NOCLIP)
+                                end
                             else
                                 -- Surface / Random: anti-cheat friendly (soft move, no snap spam)
                                 hum.PlatformStand = false
@@ -1428,7 +1442,7 @@ end)
 
 -- Noclip only when toggle is ON (not forced by AutoFarm)
 RS.Stepped:Connect(function()
-    if NOCLIP or (AF and FARM_MODE == "FlatUnder") then
+    if NOCLIP then
         setNoclip(true)
     end
 end)
