@@ -233,6 +233,7 @@ local SP = 20
 local RG = 500
 local VS = {}
 local CL = 0
+local lastCollectTick = tick()
 local AK = false
 local RF = true
 local PM = false
@@ -279,10 +280,8 @@ local function restoreMovement()
     end)
 end
 
--- Anti-void: no kill plane + one-shot recover if you fall under the map
+-- Anti-void: ONLY lower kill plane. No CFrame, no pull, no recover teleport.
 local VOID_ON = true
-local lastVoidBoost = 0
-local lastSafeCF = nil
 local function setVoidProtect(on)
     VOID_ON = on
     pcall(function()
@@ -293,40 +292,10 @@ pcall(function() setVoidProtect(true) end)
 
 task.spawn(function()
     while true do
-        task.wait(0.35)
-        pcall(function()
-            if VOID_ON then
-                workspace.FallenPartsDestroyHeight = -50000
-            end
-            local ch = lp.Character
-            local root = ch and ch:FindFirstChild("HumanoidRootPart")
-            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-            if not root then return end
-            local y = root.Position.Y
-            -- remember last good standing height (on / above map)
-            if y > 5 and y < 500 then
-                lastSafeCF = root.CFrame
-            end
-            -- fell under map / into void while farming or noclip
-            if y < -25 then
-                if tick() - lastVoidBoost < 3 then return end
-                lastVoidBoost = tick()
-                root.AssemblyAngularVelocity = Vector3.zero
-                root.AssemblyLinearVelocity = Vector3.zero
-                if hum then
-                    hum.PlatformStand = false
-                    hum.Sit = false
-                    hum.AutoRotate = true
-                end
-                root.Anchored = false
-                setNoclip(false)
-                if lastSafeCF then
-                    root.CFrame = lastSafeCF + Vector3.new(0, 3, 0)
-                else
-                    root.CFrame = CFrame.new(root.Position.X, 25, root.Position.Z)
-                end
-            end
-        end)
+        task.wait(1)
+        if VOID_ON then
+            pcall(function() workspace.FallenPartsDestroyHeight = -50000 end)
+        end
     end
 end)
 
@@ -875,8 +844,10 @@ local function showAF()
         if v then
             CL = 0
             VS = {}
+            lastCollectTick = tick()
             clearListedDone()
             restoreMovement()
+            setNoclip(false)
             local n = rebuildCoinCache()
             print("[Farm] AutoFarm ON | coins found:", n)
         else
@@ -1328,6 +1299,27 @@ task.spawn(function()
                     if flinging then
                         task.wait(0.2)
                     else
+
+                        -- Force start: 30s no collect while round has coins
+                        if tick() - lastCollectTick > 30 then
+                            local coins = getCoins()
+                            if #coins > 0 and root and root.Parent then
+                                local c = coins[math.random(1, #coins)]
+                                if c and c.Parent and c.Position.Y > -5 and c.Position.Y < 300 then
+                                    setNoclip(false)
+                                    root.Anchored = false
+                                    if hum then hum.PlatformStand = false hum.AutoRotate = true end
+                                    root.CFrame = CFrame.new(c.Position + Vector3.new(0, 3, 0))
+                                    touchCoin(c, root)
+                                    lastCollectTick = tick()
+                                    task.wait(0.2)
+                                end
+                            else
+                                rebuildCoinCache()
+                                lastCollectTick = tick() -- avoid spam TP while no coins in lobby
+                            end
+                        end
+
                         if tick() - lastClear > 30 then
                             VS = {}
                             lastClear = tick()
@@ -1337,9 +1329,13 @@ task.spawn(function()
                         local allCoins = getCoins()
                         local candidates = {}
                         for _, obj in ipairs(allCoins) do
-                            local d = (obj.Position - root.Position).Magnitude
-                            if d < RG then
-                                table.insert(candidates, {obj = obj, dist = d})
+                            local pos = obj.Position
+                            -- never path to void / sky coins
+                            if pos.Y > -5 and pos.Y < 350 then
+                                local d = (pos - root.Position).Magnitude
+                                if d < RG then
+                                    table.insert(candidates, {obj = obj, dist = d})
+                                end
                             end
                         end
                         local target, dist = pickTarget(candidates, root)
@@ -1348,25 +1344,7 @@ task.spawn(function()
                             local before = realCoins
                             local coinPos = target.Position
 
-                            if FARM_MODE == "FlatUnder" then
-                                -- Flat on coin height only (no under-map noclip stay)
-                                hum.AutoRotate = false
-                                hum.PlatformStand = false
-                                root.Anchored = false
-                                setNoclip(true)
-                                moveFlat(root, coinPos, SP)
-                                setNoclip(NOCLIP)
-                                local tWait = tick()
-                                while tick() - tWait < 0.55 do
-                                    if not (root and root.Parent and target and target.Parent) then break end
-                                    root.CFrame = CFrame.new(coinPos) * FLAT
-                                    root.AssemblyLinearVelocity = Vector3.zero
-                                    touchCoin(target, root)
-                                    if realCoins > before then break end
-                                    if not target:FindFirstChild("TouchInterest") then break end
-                                    task.wait(0.04)
-                                end
-                            elseif FARM_MODE == "Tween" then
+                            if FARM_MODE == "Tween" then
                                 if NOCLIP then setNoclip(true) end
                                 hum.AutoRotate = true
                                 root.Anchored = false
@@ -1399,6 +1377,9 @@ task.spawn(function()
                                 hum.AutoRotate = true
                                 root.Anchored = false
                                 if not NOCLIP then setNoclip(false) end
+                                if coinPos.Y < -5 or coinPos.Y > 350 then
+                                    VS[target] = true
+                                else
                                 local dest = coinPos + Vector3.new(0, 2.2, 0)
                                 local useSp = math.clamp(SP, 6, 16)
                                 moveToken = moveToken + 1
@@ -1416,10 +1397,12 @@ task.spawn(function()
                                         task.wait(0.06)
                                     end
                                 end
+                                end
                             end
 
                             VS[target] = true
                             CL = CL + 1
+                            lastCollectTick = tick()
                             task.wait(COIN_DELAY)
                         else
                             -- round may have started but cache empty: hard rescan
