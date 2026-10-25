@@ -521,12 +521,11 @@ local lastCoinScan = 0
 local function isCoinPart(v)
     if not v or not v.Parent or VS[v] then return false end
     if not v:IsA("BasePart") then return false end
-    if v.Name ~= "Coin_Server" and v.Name ~= "Coin" then return false end
-    -- Prefer touch, but still track Coin_Server without interest briefly (event maps)
-    if v:FindFirstChild("TouchInterest") or v:FindFirstChildWhichIsA("TouchTransmitter") then
+    local n = v.Name
+    if n == "Coin_Server" or n == "Coin" or n == "Coin_Client" then
         return true
     end
-    return v.Name == "Coin_Server"
+    return false
 end
 
 local function rebuildCoinCache()
@@ -567,7 +566,7 @@ task.spawn(function()
     task.wait(0.5)
     rebuildCoinCache()
     while true do
-        task.wait(AF and 0.75 or 2)
+        task.wait(AF and 0.4 or 2)
         rebuildCoinCache()
     end
 end)
@@ -844,7 +843,7 @@ local function showAF()
         if v then
             CL = 0
             VS = {}
-            lastCollectTick = tick()
+            lastCollectTick = tick() - 4
             clearListedDone()
             restoreMovement()
             setNoclip(false)
@@ -1182,12 +1181,26 @@ UIS.JumpRequest:Connect(function()
 end)
 
 lp.CharacterAdded:Connect(function(ch)
-    task.wait(0.3)
-    local hum = ch:FindFirstChild("Humanoid")
-    if hum then hum.JumpPower = JP end
-    VS = {}
-    restoreMovement()
-    if NOCLIP then setNoclip(true) end
+    task.spawn(function()
+        task.wait(0.35)
+        local hum = ch:FindFirstChild("Humanoid") or ch:WaitForChild("Humanoid", 5)
+        local root = ch:FindFirstChild("HumanoidRootPart") or ch:WaitForChild("HumanoidRootPart", 5)
+        if hum then hum.JumpPower = JP end
+        VS = {}
+        lastCollectTick = tick() - 4
+        restoreMovement()
+        setNoclip(NOCLIP)
+        rebuildCoinCache()
+        -- if farming and coins already out, nudge start
+        if AF and root then
+            local coins = getCoins()
+            if #coins == 0 then
+                task.wait(0.5)
+                rebuildCoinCache()
+                coins = getCoins()
+            end
+        end
+    end)
 end)
 
 local coinRemote = RPS:FindFirstChild("Remotes")
@@ -1301,7 +1314,7 @@ task.spawn(function()
                     else
 
                         -- Force start: 30s no collect while round has coins
-                        if tick() - lastCollectTick > 30 then
+                        if tick() - lastCollectTick > 5 then
                             local coins = getCoins()
                             if #coins > 0 and root and root.Parent then
                                 local c = coins[math.random(1, #coins)]
@@ -1311,12 +1324,14 @@ task.spawn(function()
                                     if hum then hum.PlatformStand = false hum.AutoRotate = true end
                                     root.CFrame = CFrame.new(c.Position + Vector3.new(0, 3, 0))
                                     touchCoin(c, root)
+                                    task.wait(0.05)
+                                    touchCoin(c, root)
                                     lastCollectTick = tick()
-                                    task.wait(0.2)
+                                    task.wait(0.15)
                                 end
                             else
                                 rebuildCoinCache()
-                                lastCollectTick = tick() -- avoid spam TP while no coins in lobby
+                                -- do NOT reset lastCollectTick here (lobby has no coins)
                             end
                         end
 
@@ -1330,10 +1345,19 @@ task.spawn(function()
                         local candidates = {}
                         for _, obj in ipairs(allCoins) do
                             local pos = obj.Position
-                            -- never path to void / sky coins
                             if pos.Y > -5 and pos.Y < 350 then
                                 local d = (pos - root.Position).Magnitude
                                 if d < RG then
+                                    table.insert(candidates, {obj = obj, dist = d})
+                                end
+                            end
+                        end
+                        -- Spawn far from coins: still farm any valid coin on the map
+                        if #candidates == 0 then
+                            for _, obj in ipairs(allCoins) do
+                                local pos = obj.Position
+                                if pos.Y > -5 and pos.Y < 350 then
+                                    local d = (pos - root.Position).Magnitude
                                     table.insert(candidates, {obj = obj, dist = d})
                                 end
                             end
