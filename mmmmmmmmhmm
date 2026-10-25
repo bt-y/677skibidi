@@ -1226,6 +1226,45 @@ if coinRemote then
     end)
 end
 
+
+local TP_IF_FAR = 100 -- studs: instant TP (long walks caused void)
+local function goToCoin(root, hum, coin, speed)
+    if not root or not coin or not coin.Parent then return false end
+    local coinPos = coin.Position
+    if coinPos.Y < -5 or coinPos.Y > 350 then
+        VS[coin] = true
+        return false
+    end
+    local dest = coinPos + Vector3.new(0, 3, 0)
+    local dist = (dest - root.Position).Magnitude
+    setNoclip(false)
+    root.Anchored = false
+    if hum then
+        hum.PlatformStand = false
+        hum.Sit = false
+        hum.AutoRotate = true
+    end
+    -- Far / lobby / after death: snap once, never slow-walk across the void
+    if dist > TP_IF_FAR then
+        root.CFrame = CFrame.new(dest)
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        touchCoin(coin, root)
+        task.wait(0.06)
+        touchCoin(coin, root)
+        return true
+    end
+    moveToken = moveToken + 1
+    local useSp = math.clamp(speed or SP or 12, 6, 16)
+    local reached = safeMoveSurface(root, dest, useSp, coin)
+    if reached and coinStillValid(coin) then
+        touchCoin(coin, root)
+        return true
+    end
+    if coin then VS[coin] = true end
+    return false
+end
+
 -- =========================================================
 -- (FARM LOOP - 5 MODES)
 -- FlatUnder: under map, flat, ~4 studs below coin, firetouchinterest
@@ -1313,25 +1352,17 @@ task.spawn(function()
                         task.wait(0.2)
                     else
 
-                        -- Force start: 30s no collect while round has coins
+                        -- Force start / lobby: if coins exist and nothing collected recently, TP to one
                         if tick() - lastCollectTick > 5 then
                             local coins = getCoins()
-                            if #coins > 0 and root and root.Parent then
+                            if #coins > 0 then
                                 local c = coins[math.random(1, #coins)]
-                                if c and c.Parent and c.Position.Y > -5 and c.Position.Y < 300 then
-                                    setNoclip(false)
-                                    root.Anchored = false
-                                    if hum then hum.PlatformStand = false hum.AutoRotate = true end
-                                    root.CFrame = CFrame.new(c.Position + Vector3.new(0, 3, 0))
-                                    touchCoin(c, root)
-                                    task.wait(0.05)
-                                    touchCoin(c, root)
+                                if goToCoin(root, hum, c, SP) then
                                     lastCollectTick = tick()
-                                    task.wait(0.15)
+                                    CL = CL + 1
                                 end
                             else
                                 rebuildCoinCache()
-                                -- do NOT reset lastCollectTick here (lobby has no coins)
                             end
                         end
 
@@ -1369,11 +1400,15 @@ task.spawn(function()
                             local coinPos = target.Position
 
                             if FARM_MODE == "Tween" then
-                                if NOCLIP then setNoclip(true) end
                                 hum.AutoRotate = true
                                 root.Anchored = false
                                 local dest = coinPos + Vector3.new(0, 2, 0)
-                                moveTween(root, dest, SP)
+                                local d0 = (dest - root.Position).Magnitude
+                                if d0 > TP_IF_FAR then
+                                    root.CFrame = CFrame.new(dest)
+                                else
+                                    moveTween(root, dest, SP)
+                                end
                                 touchCoin(target, root)
                                 local tWait = tick()
                                 while tick() - tWait < 0.4 do
@@ -1395,33 +1430,8 @@ task.spawn(function()
                                     setNoclip(NOCLIP)
                                 end
                             else
-                                -- Surface / Random: anti-cheat friendly (soft move, no snap spam)
-                                hum.PlatformStand = false
-                                hum.Sit = false
-                                hum.AutoRotate = true
-                                root.Anchored = false
-                                if not NOCLIP then setNoclip(false) end
-                                if coinPos.Y < -5 or coinPos.Y > 350 then
-                                    VS[target] = true
-                                else
-                                local dest = coinPos + Vector3.new(0, 2.2, 0)
-                                local useSp = math.clamp(SP, 6, 16)
-                                moveToken = moveToken + 1
-                                local reached = safeMoveSurface(root, dest, useSp, target)
-                                if not reached or not coinStillValid(target) then
-                                    if target then VS[target] = true end
-                                    task.wait(0.05)
-                                else
-                                    local tWait = tick()
-                                    while tick() - tWait < 0.35 do
-                                        if not (root and root.Parent and target and target.Parent) then break end
-                                        if not coinStillValid(target) then break end
-                                        touchCoin(target, root)
-                                        if realCoins > before then break end
-                                        task.wait(0.06)
-                                    end
-                                end
-                                end
+                                -- Surface / Random / FlatUnder: TP if far, else soft walk
+                                goToCoin(root, hum, target, SP)
                             end
 
                             VS[target] = true
