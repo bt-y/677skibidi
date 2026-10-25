@@ -571,23 +571,55 @@ task.spawn(function()
     end
 end)
 
+local function posOnMap(pos)
+    if not pos then return false end
+    -- reject outer space / void (your logs showed Z ~ 9000)
+    if pos.Y < -5 or pos.Y > 180 then return false end
+    if math.abs(pos.X) > 600 or math.abs(pos.Z) > 600 then return false end
+    if pos.Magnitude > 900 then return false end
+    return true
+end
+
+local function filterCoinCluster(list)
+    if #list <= 1 then return list end
+    local sum = Vector3.zero
+    local n = 0
+    for _, c in ipairs(list) do
+        local pos = c.Position
+        if posOnMap(pos) then
+            sum = sum + pos
+            n = n + 1
+        end
+    end
+    if n == 0 then return {} end
+    local avg = sum / n
+    local out = {}
+    for _, c in ipairs(list) do
+        local pos = c.Position
+        if posOnMap(pos) and (pos - avg).Magnitude < 450 then
+            table.insert(out, c)
+        end
+    end
+    return out
+end
+
 local function getCoins()
     local list = {}
     for i = #coinCache, 1, -1 do
         local v = coinCache[i]
-        if isCoinPart(v) then
+        if isCoinPart(v) and posOnMap(v.Position) then
             table.insert(list, v)
         else
-            table.remove(coinCache, i)
+            if not isCoinPart(v) then table.remove(coinCache, i) end
         end
     end
     if #list == 0 and tick() - lastCoinScan > 0.35 then
         rebuildCoinCache()
         for _, v in ipairs(coinCache) do
-            if isCoinPart(v) then table.insert(list, v) end
+            if isCoinPart(v) and posOnMap(v.Position) then table.insert(list, v) end
         end
     end
-    return list
+    return filterCoinCluster(list)
 end
 
 -- Real bag count from server events / GUI
@@ -1227,28 +1259,29 @@ if coinRemote then
 end
 
 
-local TP_IF_FAR = 100 -- studs: instant TP (long walks caused void)
+local TP_IF_FAR = 100 -- studs: instant TP only to ON-MAP coins
 local function goToCoin(root, hum, coin, speed)
     if not root or not coin or not coin.Parent then return false end
     local coinPos = coin.Position
-    if coinPos.Y < -5 or coinPos.Y > 350 then
+    if not posOnMap(coinPos) then
         VS[coin] = true
         return false
     end
-    local dest = coinPos + Vector3.new(0, 3, 0)
+    local dest = coinPos + Vector3.new(0, 2.5, 0)
     local dist = (dest - root.Position).Magnitude
+    -- always leave noclip off for farm moves (noclip + far TP = space)
     setNoclip(false)
+    NOCLIP = false
     root.Anchored = false
     if hum then
         hum.PlatformStand = false
         hum.Sit = false
         hum.AutoRotate = true
     end
-    -- Far / lobby / after death: snap once, never slow-walk across the void
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
     if dist > TP_IF_FAR then
         root.CFrame = CFrame.new(dest)
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
         touchCoin(coin, root)
         task.wait(0.06)
         touchCoin(coin, root)
@@ -1348,6 +1381,21 @@ task.spawn(function()
                 local root = ch and ch:FindFirstChild("HumanoidRootPart")
                 local hum = ch and ch:FindFirstChild("Humanoid")
                 if root and hum and hum.Health > 0 then
+                    -- If we are in outer space, snap back to a real map coin
+                    if not posOnMap(root.Position) then
+                        local coins = getCoins()
+                        if #coins > 0 then
+                            local c = coins[1]
+                            root.CFrame = CFrame.new(c.Position + Vector3.new(0, 3, 0))
+                            setNoclip(false)
+                            NOCLIP = false
+                            root.AssemblyLinearVelocity = Vector3.zero
+                            task.wait(0.1)
+                        else
+                            task.wait(0.3)
+                        end
+                    end
+
                     if flinging then
                         task.wait(0.2)
                     else
@@ -1376,7 +1424,7 @@ task.spawn(function()
                         local candidates = {}
                         for _, obj in ipairs(allCoins) do
                             local pos = obj.Position
-                            if pos.Y > -5 and pos.Y < 350 then
+                            if posOnMap(pos) then
                                 local d = (pos - root.Position).Magnitude
                                 if d < RG then
                                     table.insert(candidates, {obj = obj, dist = d})
@@ -1387,7 +1435,7 @@ task.spawn(function()
                         if #candidates == 0 then
                             for _, obj in ipairs(allCoins) do
                                 local pos = obj.Position
-                                if pos.Y > -5 and pos.Y < 350 then
+                                if posOnMap(pos) then
                                     local d = (pos - root.Position).Magnitude
                                     table.insert(candidates, {obj = obj, dist = d})
                                 end
