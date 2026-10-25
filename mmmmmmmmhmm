@@ -522,10 +522,7 @@ local function isCoinPart(v)
     if not v or not v.Parent or VS[v] then return false end
     if not v:IsA("BasePart") then return false end
     local n = v.Name
-    if n == "Coin_Server" or n == "Coin" or n == "Coin_Client" then
-        return true
-    end
-    return false
+    return n == "Coin_Server" or n == "Coin" or n == "Coin_Client"
 end
 
 local function rebuildCoinCache()
@@ -573,71 +570,25 @@ end)
 
 -- Hidden/secret MM2 maps are not near 0,0,0 (logs showed Z~9000).
 -- Use densest coin cluster instead of absolute world bounds.
-local function getCoinCluster(list)
-    if #list == 0 then return {} end
-    if #list == 1 then return list end
-    local best, bestCount = {}, 0
-    for i, c in ipairs(list) do
-        local center = c.Position
-        local group = {}
-        for _, o in ipairs(list) do
-            if (o.Position - center).Magnitude < 350 then
-                table.insert(group, o)
-            end
-        end
-        if #group > bestCount then
-            bestCount = #group
-            best = group
-        end
-    end
-    return best
-end
-
 local function getCoins()
     local list = {}
     for i = #coinCache, 1, -1 do
         local v = coinCache[i]
         if isCoinPart(v) then
-            local y = v.Position.Y
-            -- only drop true void under map / insane sky
-            if y > -80 and y < 800 then
-                table.insert(list, v)
-            end
+            table.insert(list, v)
         else
             table.remove(coinCache, i)
         end
     end
-    if #list == 0 and tick() - lastCoinScan > 0.35 then
+    if #list == 0 then
         rebuildCoinCache()
         for _, v in ipairs(coinCache) do
-            if isCoinPart(v) then
-                local y = v.Position.Y
-                if y > -80 and y < 800 then table.insert(list, v) end
-            end
+            if isCoinPart(v) then table.insert(list, v) end
         end
     end
-    return getCoinCluster(list)
+    return list
 end
 
-local function posOnMap(pos)
-    if not pos then return false end
-    if pos.Y < -80 or pos.Y > 800 then return false end
-    return true
-end
-
-local function playerNearCoins(root)
-    if not root then return false end
-    local coins = getCoins()
-    if #coins == 0 then return false end
-    local avg = Vector3.zero
-    for _, c in ipairs(coins) do avg = avg + c.Position end
-    avg = avg / #coins
-    return (root.Position - avg).Magnitude < 500
-end
-
--- Real bag count from server events / GUI
-local realCoins = 0
-local realMax = 40
 local function readCoinGui()
     pcall(function()
         for _, g in ipairs(pg:GetDescendants()) do
@@ -1273,14 +1224,10 @@ if coinRemote then
 end
 
 
-local TP_IF_FAR = 100
+local TP_IF_FAR = 80
 local function goToCoin(root, hum, coin, speed)
     if not root or not coin or not coin.Parent then return false end
     local coinPos = coin.Position
-    if coinPos.Y < -80 or coinPos.Y > 800 then
-        VS[coin] = true
-        return false
-    end
     local dest = coinPos + Vector3.new(0, 2.5, 0)
     local dist = (dest - root.Position).Magnitude
     setNoclip(false)
@@ -1292,7 +1239,6 @@ local function goToCoin(root, hum, coin, speed)
     end
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
-    -- Lobby / far from play area: always TP (never walk thousands of studs)
     if dist > TP_IF_FAR then
         root.CFrame = CFrame.new(dest)
         touchCoin(coin, root)
@@ -1385,140 +1331,81 @@ end
 task.spawn(function()
     local lastClear = tick()
     while true do
-        if AF then
-            local ping = getPing()
-            if ping > 280 then
-                task.wait(0.4)
-            else
-                local ch = lp.Character
-                local root = ch and ch:FindFirstChild("HumanoidRootPart")
-                local hum = ch and ch:FindFirstChild("Humanoid")
-                if root and hum and hum.Health > 0 then
-                    -- If far from the coin cluster (lobby / stuck), TP to a coin
-                    do
-                        local coins = getCoins()
-                        if #coins > 0 then
-                            local avg = Vector3.zero
-                            for _, c in ipairs(coins) do avg = avg + c.Position end
-                            avg = avg / #coins
-                            if (root.Position - avg).Magnitude > 200 then
-                                local c = coins[math.random(1, #coins)]
-                                root.CFrame = CFrame.new(c.Position + Vector3.new(0, 3, 0))
-                                setNoclip(false)
-                                root.AssemblyLinearVelocity = Vector3.zero
-                                lastCollectTick = tick() - 2
-                                task.wait(0.1)
-                            end
-                        end
-                    end
-
-                    if flinging then
-                        task.wait(0.2)
-                    else
-
-                        -- Force start / lobby: if coins exist and nothing collected recently, TP to one
-                        if tick() - lastCollectTick > 5 then
-                            local coins = getCoins()
-                            if #coins > 0 then
-                                local c = coins[math.random(1, #coins)]
-                                if goToCoin(root, hum, c, SP) then
-                                    lastCollectTick = tick()
-                                    CL = CL + 1
-                                end
-                            else
-                                rebuildCoinCache()
-                            end
-                        end
-
-                        if tick() - lastClear > 30 then
-                            VS = {}
-                            lastClear = tick()
-                            rebuildCoinCache()
-                        end
-
-                        local allCoins = getCoins()
-                        local candidates = {}
-                        for _, obj in ipairs(allCoins) do
-                            local pos = obj.Position
-                            if pos.Y > -80 and pos.Y < 800 then
-                                local d = (pos - root.Position).Magnitude
-                                if d < RG then
-                                    table.insert(candidates, {obj = obj, dist = d})
-                                end
-                            end
-                        end
-                        -- Spawn far from coins: still farm any valid coin on the map
-                        if #candidates == 0 then
-                            for _, obj in ipairs(allCoins) do
-                                local pos = obj.Position
-                                if pos.Y > -80 and pos.Y < 800 then
-                                    local d = (pos - root.Position).Magnitude
-                                    table.insert(candidates, {obj = obj, dist = d})
-                                end
-                            end
-                        end
-                        local target, dist = pickTarget(candidates, root)
-
-                        if target and target.Parent then
-                            local before = realCoins
-                            local coinPos = target.Position
-
-                            if FARM_MODE == "Tween" then
-                                hum.AutoRotate = true
-                                root.Anchored = false
-                                local dest = coinPos + Vector3.new(0, 2, 0)
-                                local d0 = (dest - root.Position).Magnitude
-                                if d0 > TP_IF_FAR then
-                                    root.CFrame = CFrame.new(dest)
-                                else
-                                    moveTween(root, dest, SP)
-                                end
-                                touchCoin(target, root)
-                                local tWait = tick()
-                                while tick() - tWait < 0.4 do
-                                    if root and target and target.Parent then
-                                        root.CFrame = CFrame.new(coinPos + Vector3.new(0, 2, 0))
-                                        touchCoin(target, root)
-                                    end
-                                    if realCoins > before or not target.Parent then break end
-                                    if not target:FindFirstChild("TouchInterest") then break end
-                                    task.wait(0.05)
-                                end
-                            elseif FARM_MODE == "TPTouch" then
-                                if coinPos.Y > -10 and coinPos.Y < 400 then
-                                    setNoclip(true)
-                                    root.CFrame = CFrame.new(coinPos + Vector3.new(0, 2.5, 0))
-                                    touchCoin(target, root)
-                                    task.wait(0.08)
-                                    touchCoin(target, root)
-                                    setNoclip(NOCLIP)
-                                end
-                            else
-                                -- Surface / Random / FlatUnder: TP if far, else soft walk
-                                goToCoin(root, hum, target, SP)
-                            end
-
-                            VS[target] = true
-                            CL = CL + 1
-                            lastCollectTick = tick()
-                            task.wait(COIN_DELAY)
-                        else
-                            -- round may have started but cache empty: hard rescan
-                            VS = {}
-                            rebuildCoinCache()
-                            task.wait(0.15)
-                        end
-                    end
-                else
-                    task.wait(0.25)
-                end
-            end
-        else
+        if not AF then
             restoreMovement()
             task.wait(0.4)
+        else
+            local ch = lp.Character
+            local root = ch and ch:FindFirstChild("HumanoidRootPart")
+            local hum = ch and ch:FindFirstChild("Humanoid")
+            if not (root and hum and hum.Health > 0) then
+                task.wait(0.3)
+            elseif flinging then
+                task.wait(0.2)
+            else
+                if tick() - lastClear > 20 then
+                    VS = {}
+                    lastClear = tick()
+                end
+
+                -- Always rescan world for coins (lobby / mid-round / any map)
+                rebuildCoinCache()
+                local allCoins = getCoins()
+
+                if #allCoins == 0 then
+                    -- Round not started or coins cleared — keep trying
+                    task.wait(0.3)
+                else
+                    local candidates = {}
+                    for _, obj in ipairs(allCoins) do
+                        local d = (obj.Position - root.Position).Magnitude
+                        if d < RG then
+                            table.insert(candidates, {obj = obj, dist = d})
+                        end
+                    end
+
+                    local target = nil
+                    if #candidates > 0 then
+                        target = select(1, pickTarget(candidates, root))
+                    end
+
+                    -- Nothing near us -> teleport to a random coin (any map location)
+                    if not target or not target.Parent then
+                        target = allCoins[math.random(1, #allCoins)]
+                        goToCoin(root, hum, target, SP)
+                        VS[target] = true
+                        CL = CL + 1
+                        lastCollectTick = tick()
+                        task.wait(COIN_DELAY)
+                    else
+                        local dist = (target.Position - root.Position).Magnitude
+                        if dist > TP_IF_FAR then
+                            goToCoin(root, hum, target, SP)
+                        else
+                            if FARM_MODE == "Tween" then
+                                local dest = target.Position + Vector3.new(0, 2, 0)
+                                moveTween(root, dest, SP)
+                                touchCoin(target, root)
+                            elseif FARM_MODE == "TPTouch" then
+                                root.CFrame = CFrame.new(target.Position + Vector3.new(0, 2.5, 0))
+                                touchCoin(target, root)
+                                task.wait(0.05)
+                                touchCoin(target, root)
+                            else
+                                goToCoin(root, hum, target, SP)
+                            end
+                        end
+                        VS[target] = true
+                        CL = CL + 1
+                        lastCollectTick = tick()
+                        task.wait(COIN_DELAY)
+                    end
+                end
+            end
         end
     end
 end)
+
 
 
 -- Noclip only when toggle is ON (not forced by AutoFarm)
