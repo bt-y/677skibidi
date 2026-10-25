@@ -854,8 +854,7 @@ local function showAF()
     mkToggle("Anti AFK", content, AK, function(v) AK = v end).LayoutOrder = 2
     mkToggle("Reset on Full", content, RF, function(v) RF = v end).LayoutOrder = 3
     mkToggle("Performance", content, PM, function(v) if v then epm() end end).LayoutOrder = 4
-    mkToggle("Noclip", content, NOCLIP, function(v) NOCLIP = v setNoclip(v) end).LayoutOrder = 5
-    mkToggle("No Render", content, NORENDER, function(v) setNoRender(v) end).LayoutOrder = 6
+    mkToggle("No Render", content, NORENDER, function(v) setNoRender(v) end).LayoutOrder = 5
     mkToggle("Fling Attack", content, FLING_ENABLED, function(v)
         FLING_ENABLED = v
         if not v then flinging = false end
@@ -1065,7 +1064,11 @@ end
 
 local function showMove()
     clear()
-    content.CanvasSize = UDim2.new(0, 0, 0, 220)
+    content.CanvasSize = UDim2.new(0, 0, 0, 280)
+    mkToggle("Noclip", content, NOCLIP, function(v)
+        NOCLIP = v
+        setNoclip(v)
+    end).LayoutOrder = 0
     mkToggle("Inf Jump", content, IJ, function(v) IJ = v end).LayoutOrder = 1
     local lbl = Instance.new("TextLabel")
     lbl.Size = UDim2.new(1, -16, 0, 18)
@@ -1224,7 +1227,9 @@ if coinRemote then
 end
 
 
-local TP_IF_FAR = 80
+local TP_IF_FAR = 120
+local TP_COOLDOWN = 2.5
+local lastTpTick = 0
 local function goToCoin(root, hum, coin, speed)
     if not root or not coin or not coin.Parent then return false end
     local coinPos = coin.Position
@@ -1239,12 +1244,24 @@ local function goToCoin(root, hum, coin, speed)
     end
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
-    if dist > TP_IF_FAR then
+    -- Instant TP only when far AND cooldown ready (stops kick spam)
+    if dist > TP_IF_FAR and (tick() - lastTpTick) >= TP_COOLDOWN then
+        lastTpTick = tick()
         root.CFrame = CFrame.new(dest)
         touchCoin(coin, root)
-        task.wait(0.05)
+        task.wait(0.08)
         touchCoin(coin, root)
+        task.wait(0.35)
         return true
+    end
+    -- Far but on cooldown: soft walk instead of another TP
+    if dist > TP_IF_FAR then
+        moveToken = moveToken + 1
+        local useSp = math.clamp(speed or SP or 12, 6, 14)
+        local reached = safeMoveSurface(root, dest, useSp, coin)
+        if reached then touchCoin(coin, root) end
+        if coin then VS[coin] = true end
+        return reached
     end
     moveToken = moveToken + 1
     local useSp = math.clamp(speed or SP or 12, 6, 16)
@@ -1369,14 +1386,19 @@ task.spawn(function()
                         target = select(1, pickTarget(candidates, root))
                     end
 
-                    -- Nothing near us -> teleport to a random coin (any map location)
+                    -- Nothing near us -> one TP (cooldown inside goToCoin) or wait
                     if not target or not target.Parent then
                         target = allCoins[math.random(1, #allCoins)]
-                        goToCoin(root, hum, target, SP)
-                        VS[target] = true
-                        CL = CL + 1
-                        lastCollectTick = tick()
-                        task.wait(COIN_DELAY)
+                        local d = (target.Position - root.Position).Magnitude
+                        if d > TP_IF_FAR and (tick() - lastTpTick) < TP_COOLDOWN then
+                            task.wait(0.4)
+                        else
+                            goToCoin(root, hum, target, SP)
+                            VS[target] = true
+                            CL = CL + 1
+                            lastCollectTick = tick()
+                            task.wait(math.max(COIN_DELAY, 0.4))
+                        end
                     else
                         local dist = (target.Position - root.Position).Magnitude
                         if dist > TP_IF_FAR then
