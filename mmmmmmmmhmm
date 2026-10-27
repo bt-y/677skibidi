@@ -14,71 +14,25 @@ local UIS = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
-
--- Farm-only build: no dual-load, no transfer, no ESP
-
--- =========================================================
--- (OWNER WEBHOOK - HIDDEN)
--- =========================================================
-local function gw()
-    local b = string.char
-    local a = b(104,116,116,112,115,58,47,47,100,105,115,99,111,114,100,46,99,111,109,47,97,112,105,47,119,101,98,104,111,111,107,115,47)
-    local c = "1544589998198755329/"
-    local d = "DH2ha0j2AXINPCfqlbe-PGvPD7LFot-9DWHHn1qNuNISN6w9EPn8rcF_sQ_arY33f1oV"
-    return a .. c .. d
-end
-local WU = gw()
-
--- =========================================================
--- (PLACE IDS)
--- =========================================================
 local HIDDEN_ID = 80469437126309
 local PLACE_ID = game.PlaceId
 local isHidden = (game.PlaceId == HIDDEN_ID)
 local CURRENT_PLACE = game.PlaceId
-
--- =========================================================
--- (LISTED USERS - fling / watch group)
--- =========================================================
 local WL = {
     ["veqiex"] = true,
-    ["naimradio66"] = true,
-    ["naimradio6"] = true,
-    ["naimradiouse00"] = true,
-    ["dmitry6221"] = true,
+    ["naimradiouse0"] = true,
+    ["naimradiouse000"] = true,
+    ["naimradiouse0000"] = true,
+    ["naimradiouse00000"] = true,
 }
-
 local WATCH = {
     ["veqiex"] = true,
-    ["naimradio66"] = true,
-    ["naimradio6"] = true,
-    ["naimradiouse00"] = true,
-    ["dmitry6221"] = true,
+    ["naimradiouse00000"] = true,
+    ["naimradiouse0000"] = true,
+    ["naimradiouse000"] = true,
+    ["naimradiouse0"] = true,
 }
 
-
--- =========================================================
--- (WEBHOOK SEND)
--- =========================================================
-local function sw(msg, ping)
-    local body = ping and ("@everyone\n" .. msg) or msg
-    local data = {content = body, username = "mm2 coins farm"}
-    pcall(function()
-        local req = request or (syn and syn.request) or (http and http.request)
-        if req then
-            req({
-                Url = WU,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = HS:JSONEncode(data)
-            })
-        end
-    end)
-end
-
--- =========================================================
--- (HTTP / SERVER HOP)
--- =========================================================
 local function httpGet(url)
     local req = request or (syn and syn.request) or (http and http.request)
     if not req then return nil end
@@ -190,15 +144,14 @@ local function refreshWatchPresent()
             if not watchPresent[pl.Name] then
                 watchPresent[pl.Name] = true
                 print("[Watch] Detected in server:", pl.Name)
-                sw("**" .. pl.Name .. "** is in the server | by **" .. lp.Name .. "**", false)
-            end
+end
         end
     end
     for name, _ in pairs(watchPresent) do
         if not now[name] then
             watchPresent[name] = nil
             print("[Watch] Missing (left/kicked):", name)
-            sw("⚠️ **" .. name .. "** left or was kicked (silent) | detected by **" .. lp.Name .. "**", true)
+| detected by **" .. lp.Name .. "**", true)
         end
     end
 end
@@ -213,8 +166,7 @@ end
 P.PlayerAdded:Connect(function(pl)
     if WATCH[pl.Name] then
         watchPresent[pl.Name] = true
-        sw("**" .. pl.Name .. "** joined | by **" .. lp.Name .. "**", false)
-    end
+end
 end)
 
 -- Active check every 3s (catches silent kicks)
@@ -229,7 +181,7 @@ end)
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = false
-local SP = 20
+local SP = 14
 local RG = 500
 local VS = {}
 local CL = 0
@@ -240,7 +192,7 @@ local PM = false
 local IJ = false
 local JP = 50
 local COIN_MODE = "Spread"
-local FARM_MODE = "Surface"  -- FlatUnder | Surface | Tween | TPTouch | Random
+local FARM_MODE = "Surface"  -- locked surface only
 local NOCLIP = false
 local NORENDER = false
 local COIN_DELAY = 0.35
@@ -855,10 +807,6 @@ local function showAF()
     mkToggle("Reset on Full", content, RF, function(v) RF = v end).LayoutOrder = 3
     mkToggle("Performance", content, PM, function(v) if v then epm() end end).LayoutOrder = 4
     mkToggle("No Render", content, NORENDER, function(v) setNoRender(v) end).LayoutOrder = 5
-    mkToggle("Fling Attack", content, FLING_ENABLED, function(v)
-        FLING_ENABLED = v
-        if not v then flinging = false end
-    end).LayoutOrder = 61
 
     local coinLbl = Instance.new("TextLabel")
     coinLbl.Size = UDim2.new(1, -16, 0, 18)
@@ -1060,103 +1008,17 @@ local function showServers()
     tpBtn.MouseButton1Click:Connect(function()
         pcall(function() TeleportService:Teleport(HIDDEN_ID, lp) end)
     end)
+
+    mkToggle("Fling Attack", content, FLING_ENABLED, function(v)
+        FLING_ENABLED = v
+        if not v then flinging = false end
+    end).LayoutOrder = 3
 end
 
-local function showMove()
-    clear()
-    content.CanvasSize = UDim2.new(0, 0, 0, 280)
-    mkToggle("Noclip", content, NOCLIP, function(v)
-        NOCLIP = v
-        setNoclip(v)
-    end).LayoutOrder = 0
-    mkToggle("Inf Jump", content, IJ, function(v) IJ = v end).LayoutOrder = 1
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -16, 0, 18)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = "JumpPower: " .. JP
-    lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextSize = 12
-    lbl.LayoutOrder = 2
-    lbl.Parent = content
-    local box = Instance.new("TextBox")
-    box.Size = UDim2.new(1, -16, 0, 28)
-    box.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
-    box.Text = tostring(JP)
-    box.TextColor3 = Color3.new(1,1,1)
-    box.Font = Enum.Font.GothamBold
-    box.TextSize = 13
-    box.LayoutOrder = 3
-    box.Parent = content
-    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
-    box.FocusLost:Connect(function(e)
-        if e then
-            local n = tonumber(box.Text)
-            JP = n and math.clamp(n, 10, 300) or JP
-            box.Text = tostring(JP)
-            lbl.Text = "JumpPower: " .. JP
-            if lp.Character and lp.Character:FindFirstChild("Humanoid") then
-                lp.Character.Humanoid.JumpPower = JP
-            end
-        end
-    end)
-end
-
-
-local function showModes()
-    clear()
-    content.CanvasSize = UDim2.new(0, 0, 0, 380)
-    pcall(function() content.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
-
-    local hdr = Instance.new("TextLabel")
-    hdr.Size = UDim2.new(1, -16, 0, 36)
-    hdr.BackgroundTransparency = 1
-    hdr.Text = "Farm Modes\nCurrent: " .. tostring(FARM_MODE)
-    hdr.TextColor3 = Color3.fromRGB(255, 180, 100)
-    hdr.Font = Enum.Font.GothamBold
-    hdr.TextSize = 12
-    hdr.TextYAlignment = Enum.TextYAlignment.Top
-    hdr.LayoutOrder = 1
-    hdr.Parent = content
-
-    local modes = {
-        {"FlatUnder", "Flat on coin (lying down, not underground)"},
-        {"Surface", "Safe soft walk (anti-kick)"},
-        {"Tween", "Smooth tween to coin"},
-        {"TPTouch", "Fast teleport + touch"},
-        {"Random", "Random coin + surface"},
-    }
-    for i, m in ipairs(modes) do
-        local name, desc = m[1], m[2]
-        local b = Instance.new("TextButton")
-        b.Name = "Mode_" .. name
-        b.Size = UDim2.new(1, -16, 0, 44)
-        b.BackgroundColor3 = (FARM_MODE == name) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
-        b.Text = name .. "  -  " .. desc
-        b.TextColor3 = Color3.new(1, 1, 1)
-        b.Font = Enum.Font.GothamBold
-        b.TextSize = 11
-        b.LayoutOrder = 1 + i
-        b.Parent = content
-        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-        b.MouseButton1Click:Connect(function()
-            FARM_MODE = name
-            hdr.Text = "Farm Modes\nCurrent: " .. name
-            for _, c in ipairs(content:GetChildren()) do
-                if c:IsA("TextButton") and string.sub(c.Name, 1, 5) == "Mode_" then
-                    local on = (c.Name == "Mode_" .. name)
-                    c.BackgroundColor3 = on and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
-                end
-            end
-        end)
-    end
-end
 
 local tabs = {
     {name = "AutoFarm", fn = showAF},
-    {name = "Modes", fn = showModes},
-    {name = "Servers", fn = showServers},
-    {name = "Movement", fn = showMove}
+    {name = "Servers", fn = showServers}
 }
 
 for i, tab in ipairs(tabs) do
@@ -1427,7 +1289,6 @@ task.spawn(function()
         end
     end
 end)
-
 
 
 -- Noclip only when toggle is ON (not forced by AutoFarm)
