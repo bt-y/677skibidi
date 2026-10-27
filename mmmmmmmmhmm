@@ -145,7 +145,7 @@ local function copyJoinCode()
 end
 
 -- =========================================================
--- (TRANSFER - ONLY IF NOT LISTED)
+-- (FARM ONLY - NO TRANSFER)
 -- =========================================================
 -- (WATCH LIST - ACTIVE POLL FOR SILENT KICKS)
 -- =========================================================
