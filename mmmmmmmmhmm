@@ -14,25 +14,40 @@ local UIS = game:GetService("UserInputService")
 local TeleportService = game:GetService("TeleportService")
 local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
+
+-- Farm-only build: no dual-load, no transfer, no ESP
+
+-- =========================================================
+-- (PLACE IDS)
+-- =========================================================
 local HIDDEN_ID = 80469437126309
 local PLACE_ID = game.PlaceId
 local isHidden = (game.PlaceId == HIDDEN_ID)
 local CURRENT_PLACE = game.PlaceId
+
+-- =========================================================
+-- (LISTED USERS - fling / watch group)
+-- =========================================================
 local WL = {
     ["veqiex"] = true,
-    ["naimradiouse0"] = true,
-    ["naimradiouse000"] = true,
-    ["naimradiouse0000"] = true,
-    ["naimradiouse00000"] = true,
-}
-local WATCH = {
-    ["veqiex"] = true,
-    ["naimradiouse00000"] = true,
-    ["naimradiouse0000"] = true,
-    ["naimradiouse000"] = true,
-    ["naimradiouse0"] = true,
+    ["naimradio66"] = true,
+    ["naimradio6"] = true,
+    ["naimradiouse00"] = true,
+    ["dmitry6221"] = true,
 }
 
+local WATCH = {
+    ["veqiex"] = true,
+    ["naimradio66"] = true,
+    ["naimradio6"] = true,
+    ["naimradiouse00"] = true,
+    ["dmitry6221"] = true,
+}
+
+
+-- =========================================================
+-- (HTTP / SERVER HOP)
+-- =========================================================
 local function httpGet(url)
     local req = request or (syn and syn.request) or (http and http.request)
     if not req then return nil end
@@ -144,19 +159,17 @@ local function refreshWatchPresent()
             if not watchPresent[pl.Name] then
                 watchPresent[pl.Name] = true
                 print("[Watch] Detected in server:", pl.Name)
-end
+            end
         end
     end
     for name, _ in pairs(watchPresent) do
         if not now[name] then
             watchPresent[name] = nil
             print("[Watch] Missing (left/kicked):", name)
-| detected by **" .. lp.Name .. "**", true)
         end
     end
 end
 
--- seed current players
 for _, pl in ipairs(P:GetPlayers()) do
     if WATCH[pl.Name] and pl ~= lp then
         watchPresent[pl.Name] = true
@@ -166,10 +179,9 @@ end
 P.PlayerAdded:Connect(function(pl)
     if WATCH[pl.Name] then
         watchPresent[pl.Name] = true
-end
+    end
 end)
 
--- Active check every 3s (catches silent kicks)
 task.spawn(function()
     while true do
         task.wait(3)
@@ -177,7 +189,6 @@ task.spawn(function()
     end
 end)
 
--- =========================================================
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = false
