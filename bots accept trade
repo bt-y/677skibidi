@@ -1,0 +1,282 @@
+--this script to automaticly accept spam trade requests and rage bait bots
+-- MM2 Auto Accept All Trades (no GUI, console only, infinite loop)
+-- Accepts trade requests from ANY player, auto-accepts, finishes trade with no items offered
+
+local P = game:GetService("Players")
+local RPS = game:GetService("ReplicatedStorage")
+local lp = P.LocalPlayer
+local pg = lp:WaitForChild("PlayerGui")
+
+if _G.__MM2_AUTO_ACCEPT_LOADED then
+    print("[MM2 AutoAccept] already loaded")
+    return
+end
+_G.__MM2_AUTO_ACCEPT_LOADED = true
+
+print("[MM2 AutoAccept] loading...")
+
+local function clickGui(g)
+    if not g then return end
+    pcall(function()
+        if firesignal then
+            if g.MouseButton1Click then firesignal(g.MouseButton1Click) end
+            if g.Activated then firesignal(g.Activated) end
+            if g.MouseButton1Down then firesignal(g.MouseButton1Down) end
+        end
+    end)
+    pcall(function()
+        if getconnections then
+            for _, sig in ipairs({"Activated", "MouseButton1Click", "MouseButton1Down", "MouseButton1Up"}) do
+                local ok, cons = pcall(function() return getconnections(g[sig]) end)
+                if ok and cons then
+                    for _, c in ipairs(cons) do
+                        pcall(function() if c.Function then c.Function() end end)
+                        pcall(function() if c.Fire then c:Fire() end end)
+                    end
+                end
+            end
+        end
+    end)
+    pcall(function()
+        local vim = game:GetService("VirtualInputManager")
+        local pos = g.AbsolutePosition + (g.AbsoluteSize / 2)
+        vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+        task.wait(0.03)
+        vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+    end)
+end
+
+local function forceTradesOn()
+    pcall(function()
+        local main = pg:FindFirstChild("MainGUI") or pg:FindFirstChild("MainGui")
+        if main then
+            local paths = {
+                {"Game", "Leaderboard", "Container", "TradeRequest"},
+                {"Game", "Leaderboard", "TradeRequest"},
+                {"Leaderboard", "Container", "TradeRequest"},
+                {"Menu", "Leaderboard", "TradeRequest"},
+            }
+            for _, path in ipairs(paths) do
+                local node = main
+                for _, name in ipairs(path) do
+                    if not node then break end
+                    node = node:FindFirstChild(name)
+                end
+                if node then
+                    for _, d in ipairs(node:GetDescendants()) do
+                        if d:IsA("GuiButton") or d:IsA("TextButton") or d:IsA("ImageButton") then
+                            local txt = string.lower(tostring(d.Text or d.Name or ""))
+                            if txt:find("off") or txt:find("on") or txt:find("request") or txt:find("trade") or d.Name == "ReceivingRequest" then
+                                clickGui(d)
+                            end
+                        end
+                        if d.Name == "ReceivingRequest" or d.Name == "TradeRequest" then
+                            if d:IsA("GuiButton") then clickGui(d) end
+                            for _, c in ipairs(d:GetChildren()) do
+                                if c:IsA("GuiButton") then clickGui(c) end
+                            end
+                        end
+                    end
+                    if node:IsA("GuiButton") then clickGui(node) end
+                end
+            end
+        end
+    end)
+
+    pcall(function()
+        for _, d in ipairs(pg:GetDescendants()) do
+            if d:IsA("TextButton") or d:IsA("ImageButton") then
+                local txt = string.lower(tostring(d.Text or ""))
+                local nm = string.lower(tostring(d.Name or ""))
+                if txt == "off" or (txt:find("trade") and txt:find("request")) or nm:find("traderequest") or nm == "receivingrequest" then
+                    clickGui(d)
+                end
+            end
+        end
+    end)
+
+    pcall(function()
+        local Trade = RPS:FindFirstChild("Trade")
+        local names = {
+            "ToggleTrading", "SetTrading", "SetTradeEnabled", "EnableTrading",
+            "TradingEnabled", "TradeRequests", "SetTradeRequests", "ToggleTradeRequests",
+            "UpdateTradeSetting", "TradePreference", "ReceivingRequest"
+        }
+        for _, name in ipairs(names) do
+            local r = (Trade and Trade:FindFirstChild(name)) or RPS:FindFirstChild(name, true)
+            if r and r:IsA("RemoteEvent") then
+                pcall(function() r:FireServer(true) end)
+                pcall(function() r:FireServer("On") end)
+                pcall(function() r:FireServer(1) end)
+            elseif r and r:IsA("RemoteFunction") then
+                pcall(function() r:InvokeServer(true) end)
+                pcall(function() r:InvokeServer("On") end)
+            end
+        end
+    end)
+end
+
+-- keep trade requests enabled forever
+task.spawn(function()
+    for i = 1, 10 do
+        forceTradesOn()
+        task.wait(0.35)
+    end
+    while true do
+        forceTradesOn()
+        task.wait(4)
+    end
+end)
+
+local Trade = RPS:FindFirstChild("Trade") or RPS:WaitForChild("Trade", 15)
+local AR, AT, SR, ST, UT, DT, OI
+if Trade then
+    AR = Trade:FindFirstChild("AcceptRequest")
+    AT = Trade:FindFirstChild("AcceptTrade")
+    SR = Trade:FindFirstChild("SendRequest")
+    ST = Trade:FindFirstChild("StartTrade")
+    UT = Trade:FindFirstChild("UpdateTrade")
+    DT = Trade:FindFirstChild("DeclineTrade")
+    OI = Trade:FindFirstChild("OfferItem")
+end
+
+local inTrade = false
+local lastAccept = 0
+local LF = nil
+
+local function forceAccept()
+    if not AT then return end
+    if tick() - lastAccept < 0.4 then return end
+    lastAccept = tick()
+    pcall(function() AT:FireServer() end)
+    pcall(function() AT:FireServer(game.PlaceId * 3, tick()) end)
+    if LF then
+        pcall(function() AT:FireServer(game.PlaceId * 3, LF) end)
+    end
+end
+
+-- hide trade GUI (no visual, pure auto)
+local function hideTradeGui(g)
+    pcall(function()
+        for _, c in ipairs(g:GetDescendants()) do
+            if c:IsA("GuiObject") then
+                c.Visible = false
+            end
+        end
+        if g:IsA("ScreenGui") then
+            g.Enabled = false
+        end
+    end)
+end
+
+pcall(function()
+    local function watch(n)
+        local g = pg:FindFirstChild(n)
+        if g then
+            hideTradeGui(g)
+            g:GetPropertyChangedSignal("Enabled"):Connect(function()
+                if g.Enabled then hideTradeGui(g) end
+            end)
+        end
+    end
+    watch("TradeGUI")
+    watch("TradeGUI_Phone")
+    pg.ChildAdded:Connect(function(c)
+        if c.Name == "TradeGUI" or c.Name == "TradeGUI_Phone" then
+            task.wait(0.05)
+            hideTradeGui(c)
+        end
+    end)
+end)
+
+-- accept ANY incoming trade request
+if SR then
+    pcall(function()
+        SR.OnClientInvoke = function(fromPlayer)
+            local name = (fromPlayer and fromPlayer.Name) or "unknown"
+            print("[MM2 AutoAccept] trade request from: " .. tostring(name) .. " -> ACCEPTING")
+            inTrade = true
+            LF = nil
+            task.wait(0.25)
+            if AR then
+                pcall(function() AR:FireServer() end)
+            end
+            return true
+        end
+    end)
+end
+
+-- when trade starts: offer nothing, accept immediately
+if ST then
+    ST.OnClientEvent:Connect(function()
+        if not inTrade then
+            inTrade = true
+        end
+        print("[MM2 AutoAccept] trade started -> auto accept")
+        task.wait(0.35)
+        forceAccept()
+        task.wait(0.5)
+        forceAccept()
+    end)
+end
+
+-- update trade: accept as soon as possible
+if UT then
+    UT.OnClientEvent:Connect(function(data)
+        if type(data) == "table" and data.LastOffer then
+            LF = data.LastOffer
+        end
+        if not inTrade then return end
+        task.wait(0.2)
+        forceAccept()
+        if type(data) == "table" then
+            for _, side in pairs(data) do
+                if type(side) == "table" and side.Accepted then
+                    forceAccept()
+                    break
+                end
+            end
+        end
+    end)
+end
+
+if DT then
+    DT.OnClientEvent:Connect(function()
+        print("[MM2 AutoAccept] trade declined / closed")
+        inTrade = false
+        LF = nil
+    end)
+end
+
+-- continuous force accept while in trade
+task.spawn(function()
+    while true do
+        task.wait(0.45)
+        if inTrade and AT then
+            forceAccept()
+        end
+    end
+end)
+
+-- extra safety: scan for accept buttons if remotes lag
+task.spawn(function()
+    while true do
+        task.wait(1.2)
+        pcall(function()
+            for _, d in ipairs(pg:GetDescendants()) do
+                if d:IsA("TextButton") or d:IsA("ImageButton") then
+                    local t = string.lower(tostring(d.Text or ""))
+                    local n = string.lower(tostring(d.Name or ""))
+                    if t == "accept" or t:find("accept") or n:find("accept") then
+                        if d.Visible and d.Parent and d.Parent.Visible ~= false then
+                            clickGui(d)
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+print("[MM2 AutoAccept] ready | accepting trades from ALL players | no items offered | infinite loop")
+print("[MM2 AutoAccept] trade requests forced ON | GUI hidden")
