@@ -203,7 +203,7 @@ local PM = false
 local IJ = false
 local JP = 50
 local COIN_MODE = "Spread"
-local FARM_MODE = "Surface"  -- locked surface only
+local FARM_MODE = "Flat"  -- "Surface" or "Flat"
 local NOCLIP = false
 local NORENDER = false
 local COIN_DELAY = 0.35
@@ -581,62 +581,102 @@ local function coinStillValid(coin)
     return true
 end
 
-local function safeMoveTo(root, targetPos, speed, coin)
-    if not root or not root.Parent then return false end
-    speed = math.clamp(speed or SP or 20, 5, 100)
+local FLAT = CFrame.Angles(math.rad(90), 0, 0)
+
+-- Scan for a better live coin while moving (mid-travel switch)
+local function findBetterCoin(root, current, remainingDist)
+    local best, bestDist = nil, math.huge
+    for _, obj in ipairs(getCoins()) do
+        if coinStillValid(obj) then
+            local d = (obj.Position - root.Position).Magnitude
+            if d < bestDist and d < RG then
+                bestDist = d
+                best = obj
+            end
+        end
+    end
+    if not current or not coinStillValid(current) then
+        return best
+    end
+    if best and best ~= current and bestDist + 2 < remainingDist then
+        return best
+    end
+    return nil
+end
+
+-- Surface move with mid-travel cancel + switch
+-- returns: reached (bool), newTarget (coin or nil)
+local function moveSurface(root, target, speed)
+    if not root or not root.Parent or not target then return false, nil end
+    speed = math.clamp(speed or SP or 14, 5, 40)
+    local dest = target.Position + Vector3.new(0, 2.5, 0)
     local startPos = root.Position
-    local dist = (targetPos - startPos).Magnitude
-    if dist < 3 then
-        root.CFrame = CFrame.new(targetPos)
-        return true
+    local dist = (dest - startPos).Magnitude
+    if dist < 3.5 then
+        root.CFrame = CFrame.new(dest)
+        return true, nil
     end
     local duration = math.clamp(dist / speed, 0.08, 4)
     local t0 = tick()
     local myToken = moveToken
     while root and root.Parent do
-        if myToken ~= moveToken then return false end
-        if coin and not coinStillValid(coin) then
-            VS[coin] = true
-            return false
+        if myToken ~= moveToken then return false, nil end
+        if not coinStillValid(target) then
+            VS[target] = true
+            local better = findBetterCoin(root, nil, math.huge)
+            return false, better
         end
-        local alpha = math.min((tick() - t0) / duration, 1)
-        root.CFrame = CFrame.new(startPos:Lerp(targetPos, alpha))
-        if alpha >= 1 then return true end
-        task.wait()
-    end
-    return false
-end
-
-local function safeMoveSurface(root, targetPos, speed, coin)
-    if not root or not root.Parent then return false end
-    speed = math.clamp(speed or SP or 12, 6, 16)
-    local startPos = root.Position
-    local dest = targetPos
-    local dist = (dest - startPos).Magnitude
-    if dist < 4.5 then
-        return true
-    end
-    if dist > 70 then
-        dest = startPos + (dest - startPos).Unit * 70
-        dist = 70
-    end
-    local duration = math.clamp(dist / speed, 0.2, 6)
-    local t0 = tick()
-    local myToken = moveToken
-    while root and root.Parent do
-        if myToken ~= moveToken then return false end
-        if coin and not coinStillValid(coin) then
-            VS[coin] = true
-            return false -- cancel: coin taken, pick another
+        local remaining = (dest - root.Position).Magnitude
+        local better = findBetterCoin(root, target, remaining)
+        if better then
+            return false, better
         end
         local alpha = math.min((tick() - t0) / duration, 1)
         local s = alpha * alpha * (3 - 2 * alpha)
-        local p = startPos:Lerp(dest, s)
-        root.CFrame = CFrame.new(p)
-        if alpha >= 1 then break end
-        task.wait(0.03)
+        root.CFrame = CFrame.new(startPos:Lerp(dest, s))
+        root.AssemblyLinearVelocity = Vector3.zero
+        if alpha >= 1 then return true, nil end
+        task.wait()
     end
-    return true
+    return false, nil
+end
+
+-- Flat move with mid-travel cancel + switch
+local function moveFlat(root, target, speed)
+    if not root or not root.Parent or not target then return false, nil end
+    setNoclip(true)
+    speed = math.clamp(speed or SP or 14, 5, 40)
+    local dest = target.Position
+    local startPos = root.Position
+    local dist = (dest - startPos).Magnitude
+    if dist < 1.8 then
+        root.CFrame = CFrame.new(dest) * FLAT
+        root.AssemblyLinearVelocity = Vector3.zero
+        return true, nil
+    end
+    local duration = math.clamp(dist / speed, 0.05, 3)
+    local t0 = tick()
+    local myToken = moveToken
+    while root and root.Parent do
+        if myToken ~= moveToken then return false, nil end
+        if not coinStillValid(target) then
+            VS[target] = true
+            local better = findBetterCoin(root, nil, math.huge)
+            return false, better
+        end
+        local remaining = (dest - root.Position).Magnitude
+        local better = findBetterCoin(root, target, remaining)
+        if better then
+            return false, better
+        end
+        local alpha = math.min((tick() - t0) / duration, 1)
+        local p = startPos:Lerp(dest, alpha)
+        root.CFrame = CFrame.new(p) * FLAT
+        root.AssemblyLinearVelocity = Vector3.zero
+        if alpha >= 1 then return true, nil end
+        task.wait()
+    end
+    return false, nil
 end
 
 local function touchCoin(coin, root)
@@ -644,9 +684,11 @@ local function touchCoin(coin, root)
     pcall(function()
         if firetouchinterest then
             firetouchinterest(root, coin, 0)
-            task.wait(0.04)
+            task.wait(0.03)
             firetouchinterest(root, coin, 1)
         end
+        pcall(function() firetouchinterest(coin, root, 0) end)
+        pcall(function() firetouchinterest(coin, root, 1) end)
     end)
 end
 
@@ -654,12 +696,100 @@ local function getPing()
     local ok, ping = pcall(function()
         return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
     end)
-    if ok and typeof(ping) == "number" then return ping end
-    return 0
+    return ok and ping or 0
+end
+
+local TP_IF_FAR = 140
+local TP_COOLDOWN = 3
+local lastTpTick = 0
+
+-- Go to coin; supports mid-travel retarget. Returns true if collected attempt done.
+local function goToCoin(root, hum, coin, speed)
+    if not root or not coin then return false end
+    local current = coin
+    local hops = 0
+    while current and hops < 8 do
+        hops = hops + 1
+        if not coinStillValid(current) then
+            VS[current] = true
+            current = findBetterCoin(root, nil, math.huge)
+            if not current then return false end
+        end
+        local dest = current.Position + Vector3.new(0, 2.5, 0)
+        local dist = (current.Position - root.Position).Magnitude
+        root.Anchored = false
+        if hum then
+            hum.PlatformStand = false
+            hum.Sit = false
+        end
+        root.AssemblyLinearVelocity = Vector3.zero
+        -- Rare far TP with cooldown (anti kick spam)
+        if dist > TP_IF_FAR and (tick() - lastTpTick) >= TP_COOLDOWN then
+            lastTpTick = tick()
+            if FARM_MODE == "Flat" then
+                setNoclip(true)
+                root.CFrame = CFrame.new(current.Position) * FLAT
+            else
+                setNoclip(false)
+                root.CFrame = CFrame.new(dest)
+            end
+            touchCoin(current, root)
+            task.wait(0.06)
+            touchCoin(current, root)
+            if not coinStillValid(current) then
+                VS[current] = true
+                return true
+            end
+        end
+        moveToken = moveToken + 1
+        local reached, newT
+        if FARM_MODE == "Flat" then
+            if hum then hum.AutoRotate = false end
+            setNoclip(true)
+            reached, newT = moveFlat(root, current, speed)
+        else
+            if hum then hum.AutoRotate = true end
+            setNoclip(NOCLIP)
+            reached, newT = moveSurface(root, current, speed)
+        end
+        if newT and newT ~= current then
+            current = newT
+            -- continue loop toward new target without counting collect
+        elseif reached then
+            local tWait = tick()
+            while tick() - tWait < 0.45 do
+                if not (root and root.Parent) then break end
+                if not coinStillValid(current) then break end
+                if FARM_MODE == "Flat" then
+                    root.CFrame = CFrame.new(current.Position) * FLAT
+                else
+                    root.CFrame = CFrame.new(current.Position + Vector3.new(0, 2.5, 0))
+                end
+                touchCoin(current, root)
+                task.wait(0.04)
+            end
+            VS[current] = true
+            return true
+        else
+            if current then VS[current] = true end
+            return false
+        end
+    end
+    return false
+end
+
+local function pickTarget(candidates)
+    if #candidates == 0 then return nil end
+    table.sort(candidates, function(a, b) return a.dist < b.dist end)
+    if COIN_MODE == "Closest" then
+        return candidates[1].obj
+    end
+    -- Spread: random among closest few so alts don't stack
+    local pool = math.min(5, #candidates)
+    return candidates[math.random(1, pool)].obj
 end
 
 
--- =========================================================
 -- (GUI)
 -- =========================================================
 local gui = Instance.new("ScreenGui")
@@ -669,8 +799,8 @@ gui.IgnoreGuiInset = true
 gui.Parent = pg
 
 local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(420, 480)
-main.Position = UDim2.new(0.5, -210, 0.1, 0)
+main.Size = UDim2.fromOffset(420, 520)
+main.Position = UDim2.new(0.5, -210, 0.08, 0)
 main.BackgroundColor3 = Color3.fromRGB(14, 7, 4)
 main.Active = true
 main.Draggable = true
@@ -743,7 +873,7 @@ content.Position = UDim2.new(0, 120, 0, 44)
 content.BackgroundColor3 = Color3.fromRGB(18, 9, 5)
 content.BorderSizePixel = 0
 content.ScrollBarThickness = 3
-content.CanvasSize = UDim2.new(0, 0, 0, 780)
+content.CanvasSize = UDim2.new(0, 0, 0, 900)
 content.Parent = main
 Instance.new("UICorner", content).CornerRadius = UDim.new(0, 8)
 
@@ -794,7 +924,7 @@ end
 
 local function showAF()
     clear()
-    content.CanvasSize = UDim2.new(0, 0, 0, 900)
+    content.CanvasSize = UDim2.new(0, 0, 0, 1050)
     pcall(function() content.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
 
     mkToggle("AutoFarm", content, AF, function(v)
@@ -802,22 +932,89 @@ local function showAF()
         if v then
             CL = 0
             VS = {}
-            lastCollectTick = tick() - 4
             clearListedDone()
             restoreMovement()
-            setNoclip(false)
-            rebuildCoinCache()
-            local n = #getCoins()
+            local n = rebuildCoinCache()
             print("[Farm] AutoFarm ON | coins found:", n)
         else
             restoreMovement()
             print("[Farm] AutoFarm OFF - movement restored")
         end
     end).LayoutOrder = 1
+
     mkToggle("Anti AFK", content, AK, function(v) AK = v end).LayoutOrder = 2
     mkToggle("Reset on Full", content, RF, function(v) RF = v end).LayoutOrder = 3
     mkToggle("Performance", content, PM, function(v) if v then epm() end end).LayoutOrder = 4
-    mkToggle("No Render", content, NORENDER, function(v) setNoRender(v) end).LayoutOrder = 5
+    mkToggle("Noclip", content, NOCLIP, function(v) NOCLIP = v setNoclip(v) end).LayoutOrder = 5
+    mkToggle("No Render", content, NORENDER, function(v) setNoRender(v) end).LayoutOrder = 6
+
+    local modeLbl = Instance.new("TextLabel")
+    modeLbl.Size = UDim2.new(1, -16, 0, 18)
+    modeLbl.BackgroundTransparency = 1
+    modeLbl.Text = "Farm Mode: " .. tostring(FARM_MODE)
+    modeLbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    modeLbl.Font = Enum.Font.Gotham
+    modeLbl.TextSize = 12
+    modeLbl.LayoutOrder = 7
+    modeLbl.Parent = content
+
+    local modeRow = Instance.new("Frame")
+    modeRow.Size = UDim2.new(1, -16, 0, 34)
+    modeRow.BackgroundTransparency = 1
+    modeRow.LayoutOrder = 8
+    modeRow.Parent = content
+    local modeLay = Instance.new("UIListLayout")
+    modeLay.FillDirection = Enum.FillDirection.Horizontal
+    modeLay.Padding = UDim.new(0, 6)
+    modeLay.Parent = modeRow
+
+    local function styleModeBtn(b, on)
+        b.BackgroundColor3 = on and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+    end
+    local btnSurface = Instance.new("TextButton")
+    btnSurface.Size = UDim2.new(0.5, -3, 1, 0)
+    btnSurface.Text = "Surface"
+    btnSurface.TextColor3 = Color3.new(1,1,1)
+    btnSurface.Font = Enum.Font.GothamBold
+    btnSurface.TextSize = 12
+    btnSurface.Parent = modeRow
+    Instance.new("UICorner", btnSurface).CornerRadius = UDim.new(0, 6)
+    local btnFlat = Instance.new("TextButton")
+    btnFlat.Size = UDim2.new(0.5, -3, 1, 0)
+    btnFlat.Text = "Flat"
+    btnFlat.TextColor3 = Color3.new(1,1,1)
+    btnFlat.Font = Enum.Font.GothamBold
+    btnFlat.TextSize = 12
+    btnFlat.Parent = modeRow
+    Instance.new("UICorner", btnFlat).CornerRadius = UDim.new(0, 6)
+    styleModeBtn(btnSurface, FARM_MODE == "Surface")
+    styleModeBtn(btnFlat, FARM_MODE == "Flat")
+    btnSurface.MouseButton1Click:Connect(function()
+        FARM_MODE = "Surface"
+        modeLbl.Text = "Farm Mode: Surface"
+        styleModeBtn(btnSurface, true)
+        styleModeBtn(btnFlat, false)
+        restoreMovement()
+        moveToken = moveToken + 1
+    end)
+    btnFlat.MouseButton1Click:Connect(function()
+        FARM_MODE = "Flat"
+        modeLbl.Text = "Farm Mode: Flat"
+        styleModeBtn(btnSurface, false)
+        styleModeBtn(btnFlat, true)
+        moveToken = moveToken + 1
+    end)
+
+
+    mkToggle("Kill Murder on Death", content, KILL_MURDER_ON_DEATH, function(v)
+        KILL_MURDER_ON_DEATH = v
+        print("[KillMurder] Option set to", v and "ON" or "OFF")
+    end).LayoutOrder = 7
+
+    -- الخيار الجديد
+    mkToggle("Player Noclip", content, PLAYER_NOCLIP, function(v)
+        setPlayerNoclip(v)
+    end).LayoutOrder = 8
 
     local coinLbl = Instance.new("TextLabel")
     coinLbl.Size = UDim2.new(1, -16, 0, 18)
@@ -826,7 +1023,7 @@ local function showAF()
     coinLbl.TextColor3 = Color3.fromRGB(255, 180, 100)
     coinLbl.Font = Enum.Font.GothamBold
     coinLbl.TextSize = 12
-    coinLbl.LayoutOrder = 7
+    coinLbl.LayoutOrder = 9
     coinLbl.Parent = content
 
     for i, m in ipairs({"Closest", "Spread"}) do
@@ -837,7 +1034,7 @@ local function showAF()
         b.TextColor3 = Color3.new(1,1,1)
         b.Font = Enum.Font.GothamBold
         b.TextSize = 12
-        b.LayoutOrder = 7 + i
+        b.LayoutOrder = 9 + i
         b.Parent = content
         Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
         b.MouseButton1Click:Connect(function()
@@ -858,7 +1055,7 @@ local function showAF()
     lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
     lbl.Font = Enum.Font.Gotham
     lbl.TextSize = 12
-    lbl.LayoutOrder = 10
+    lbl.LayoutOrder = 12
     lbl.Parent = content
 
     local box = Instance.new("TextBox")
@@ -868,7 +1065,7 @@ local function showAF()
     box.TextColor3 = Color3.new(1,1,1)
     box.Font = Enum.Font.GothamBold
     box.TextSize = 13
-    box.LayoutOrder = 11
+    box.LayoutOrder = 13
     box.Parent = content
     Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
     box.ClearTextOnFocus = false
@@ -898,7 +1095,7 @@ local function showAF()
     delayLbl.TextColor3 = Color3.fromRGB(230, 180, 120)
     delayLbl.Font = Enum.Font.Gotham
     delayLbl.TextSize = 12
-    delayLbl.LayoutOrder = 12
+    delayLbl.LayoutOrder = 14
     delayLbl.Parent = content
 
     local delayBox = Instance.new("TextBox")
@@ -908,7 +1105,7 @@ local function showAF()
     delayBox.TextColor3 = Color3.new(1,1,1)
     delayBox.Font = Enum.Font.GothamBold
     delayBox.TextSize = 13
-    delayBox.LayoutOrder = 13
+    delayBox.LayoutOrder = 15
     delayBox.Parent = content
     Instance.new("UICorner", delayBox).CornerRadius = UDim.new(0, 5)
     delayBox.ClearTextOnFocus = false
@@ -935,7 +1132,7 @@ local function showAF()
     cnt.TextColor3 = Color3.fromRGB(255, 190, 100)
     cnt.Font = Enum.Font.Gotham
     cnt.TextSize = 12
-    cnt.LayoutOrder = 14
+    cnt.LayoutOrder = 16
     cnt.Parent = content
     task.spawn(function()
         while cnt.Parent do
@@ -944,7 +1141,6 @@ local function showAF()
         end
     end)
 
-    -- Bottom buttons
     local decalBtn = Instance.new("TextButton")
     decalBtn.Size = UDim2.new(1, -16, 0, 34)
     decalBtn.BackgroundColor3 = Color3.fromRGB(90, 50, 30)
@@ -952,7 +1148,7 @@ local function showAF()
     decalBtn.TextColor3 = Color3.new(1,1,1)
     decalBtn.Font = Enum.Font.GothamBold
     decalBtn.TextSize = 12
-    decalBtn.LayoutOrder = 15
+    decalBtn.LayoutOrder = 17
     decalBtn.Parent = content
     Instance.new("UICorner", decalBtn).CornerRadius = UDim.new(0, 6)
     decalBtn.MouseButton1Click:Connect(function()
@@ -970,7 +1166,7 @@ local function showAF()
     jobBtn.TextColor3 = Color3.new(1,1,1)
     jobBtn.Font = Enum.Font.GothamBold
     jobBtn.TextSize = 12
-    jobBtn.LayoutOrder = 16
+    jobBtn.LayoutOrder = 18
     jobBtn.Parent = content
     Instance.new("UICorner", jobBtn).CornerRadius = UDim.new(0, 6)
     jobBtn.MouseButton1Click:Connect(function()
@@ -980,7 +1176,6 @@ local function showAF()
             if jobBtn and jobBtn.Parent then jobBtn.Text = "Copy JobId (Delta)" end
         end)
     end)
-
 end
 
 local function showServers()
@@ -1019,13 +1214,92 @@ local function showServers()
     tpBtn.MouseButton1Click:Connect(function()
         pcall(function() TeleportService:Teleport(HIDDEN_ID, lp) end)
     end)
-
-    mkToggle("Fling Attack", content, FLING_ENABLED, function(v)
-        FLING_ENABLED = v
-        if not v then flinging = false end
-    end).LayoutOrder = 3
 end
 
+local function showMove()
+    clear()
+    content.CanvasSize = UDim2.new(0, 0, 0, 220)
+    mkToggle("Inf Jump", content, IJ, function(v) IJ = v end).LayoutOrder = 1
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -16, 0, 18)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "JumpPower: " .. JP
+    lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.LayoutOrder = 2
+    lbl.Parent = content
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -16, 0, 28)
+    box.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    box.Text = tostring(JP)
+    box.TextColor3 = Color3.new(1,1,1)
+    box.Font = Enum.Font.GothamBold
+    box.TextSize = 13
+    box.LayoutOrder = 3
+    box.Parent = content
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+    box.FocusLost:Connect(function(e)
+        if e then
+            local n = tonumber(box.Text)
+            JP = n and math.clamp(n, 10, 300) or JP
+            box.Text = tostring(JP)
+            lbl.Text = "JumpPower: " .. JP
+            if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+                lp.Character.Humanoid.JumpPower = JP
+            end
+        end
+    end)
+end
+
+local function showModes()
+    clear()
+    content.CanvasSize = UDim2.new(0, 0, 0, 380)
+    pcall(function() content.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+
+    local hdr = Instance.new("TextLabel")
+    hdr.Size = UDim2.new(1, -16, 0, 36)
+    hdr.BackgroundTransparency = 1
+    hdr.Text = "Farm Modes\nCurrent: " .. tostring(FARM_MODE)
+    hdr.TextColor3 = Color3.fromRGB(255, 180, 100)
+    hdr.Font = Enum.Font.GothamBold
+    hdr.TextSize = 12
+    hdr.TextYAlignment = Enum.TextYAlignment.Top
+    hdr.LayoutOrder = 1
+    hdr.Parent = content
+
+    local modes = {
+        {"FlatUnder", "Flat on coin (lying down, not underground)"},
+        {"Surface", "Walk above coin"},
+        {"Tween", "Smooth tween to coin"},
+        {"TPTouch", "Fast teleport + touch"},
+        {"Random", "Random coin + surface"},
+    }
+    for i, m in ipairs(modes) do
+        local name, desc = m[1], m[2]
+        local b = Instance.new("TextButton")
+        b.Name = "Mode_" .. name
+        b.Size = UDim2.new(1, -16, 0, 44)
+        b.BackgroundColor3 = (FARM_MODE == name) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+        b.Text = name .. "  -  " .. desc
+        b.TextColor3 = Color3.new(1, 1, 1)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 11
+        b.LayoutOrder = 1 + i
+        b.Parent = content
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        b.MouseButton1Click:Connect(function()
+            FARM_MODE = name
+            hdr.Text = "Farm Modes\nCurrent: " .. name
+            for _, c in ipairs(content:GetChildren()) do
+                if c:IsA("TextButton") and string.sub(c.Name, 1, 5) == "Mode_" then
+                    local on = (c.Name == "Mode_" .. name)
+                    c.BackgroundColor3 = on and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+                end
+            end
+        end)
+    end
+end
 
 local tabs = {
     {name = "AutoFarm", fn = showAF},
@@ -1054,26 +1328,15 @@ UIS.JumpRequest:Connect(function()
 end)
 
 lp.CharacterAdded:Connect(function(ch)
-    task.spawn(function()
-        task.wait(0.35)
-        local hum = ch:FindFirstChild("Humanoid") or ch:WaitForChild("Humanoid", 5)
-        local root = ch:FindFirstChild("HumanoidRootPart") or ch:WaitForChild("HumanoidRootPart", 5)
-        if hum then hum.JumpPower = JP end
-        VS = {}
-        lastCollectTick = tick() - 4
-        restoreMovement()
-        setNoclip(NOCLIP)
-        rebuildCoinCache()
-        -- if farming and coins already out, nudge start
-        if AF and root then
-            local coins = getCoins()
-            if #coins == 0 then
-                task.wait(0.5)
-                rebuildCoinCache()
-                coins = getCoins()
-            end
-        end
-    end)
+    task.wait(0.3)
+    local hum = ch:FindFirstChild("Humanoid")
+    if hum then hum.JumpPower = JP end
+    VS = {}
+    restoreMovement()
+    if NOCLIP then setNoclip(true) end
+    if PLAYER_NOCLIP then
+        applyPlayerNoclipToChar(ch)
+    end
 end)
 
 local coinRemote = RPS:FindFirstChild("Remotes")
@@ -1091,132 +1354,13 @@ if coinRemote then
             tryFlingIfReady()
             task.wait(0.4)
             if RF and lp.Character then
-                restoreMovement()
-                setNoclip(false)
                 lp.Character:BreakJoints()
             end
         end
     end)
 end
 
-
-local TP_IF_FAR = 120
-local TP_COOLDOWN = 2.5
-local lastTpTick = 0
-local function goToCoin(root, hum, coin, speed)
-    if not root or not coin or not coin.Parent then return false end
-    local coinPos = coin.Position
-    local dest = coinPos + Vector3.new(0, 2.5, 0)
-    local dist = (dest - root.Position).Magnitude
-    setNoclip(false)
-    root.Anchored = false
-    if hum then
-        hum.PlatformStand = false
-        hum.Sit = false
-        hum.AutoRotate = true
-    end
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    -- Instant TP only when far AND cooldown ready (stops kick spam)
-    if dist > TP_IF_FAR and (tick() - lastTpTick) >= TP_COOLDOWN then
-        lastTpTick = tick()
-        root.CFrame = CFrame.new(dest)
-        touchCoin(coin, root)
-        task.wait(0.08)
-        touchCoin(coin, root)
-        task.wait(0.35)
-        return true
-    end
-    -- Far but on cooldown: soft walk instead of another TP
-    if dist > TP_IF_FAR then
-        moveToken = moveToken + 1
-        local useSp = math.clamp(speed or SP or 12, 6, 14)
-        local reached = safeMoveSurface(root, dest, useSp, coin)
-        if reached then touchCoin(coin, root) end
-        if coin then VS[coin] = true end
-        return reached
-    end
-    moveToken = moveToken + 1
-    local useSp = math.clamp(speed or SP or 12, 6, 16)
-    local reached = safeMoveSurface(root, dest, useSp, coin)
-    if reached and coinStillValid(coin) then
-        touchCoin(coin, root)
-        return true
-    end
-    if coin then VS[coin] = true end
-    return false
-end
-
 -- =========================================================
--- (FARM LOOP - 5 MODES)
--- FlatUnder: under map, flat, ~4 studs below coin, firetouchinterest
--- Surface: walk above coin
--- Tween: TweenService to coin
--- TPTouch: CFrame to coin + touch
--- Random: random target + surface
--- =========================================================
--- Flat on surface at coin height (not underground)
-local FLAT = CFrame.Angles(math.rad(90), 0, 0)
-
-local function moveFlat(root, coinPos, speed)
-    setNoclip(true)
-    local dest = Vector3.new(coinPos.X, coinPos.Y, coinPos.Z)
-    local start = root.Position
-    local dist = (dest - start).Magnitude
-    speed = math.clamp(speed or SP or 20, 5, 100)
-    if dist < 1.5 then
-        root.CFrame = CFrame.new(dest) * FLAT
-        root.AssemblyLinearVelocity = Vector3.zero
-        return true
-    end
-    local duration = math.clamp(dist / speed, 0.05, 2.5)
-    local t0 = tick()
-    while root and root.Parent do
-        local a = math.min((tick() - t0) / duration, 1)
-        local p = start:Lerp(dest, a)
-        root.CFrame = CFrame.new(p) * FLAT
-        root.AssemblyLinearVelocity = Vector3.zero
-        if a >= 1 then return true end
-        task.wait()
-    end
-    return false
-end
-
-local function moveTween(root, dest, speed)
-    local dist = (dest - root.Position).Magnitude
-    local t = math.clamp(dist / math.max(speed, 12), 0.05, 3)
-    local tw = TS:Create(root, TweenInfo.new(t, Enum.EasingStyle.Linear), {CFrame = CFrame.new(dest)})
-    tw:Play()
-    tw.Completed:Wait()
-end
-
-local function pickTarget(candidates, root)
-    if #candidates == 0 then return nil, math.huge end
-    table.sort(candidates, function(a, b) return a.dist < b.dist end)
-    if FARM_MODE == "Random" then
-        local p = candidates[math.random(1, #candidates)]
-        return p.obj, p.dist
-    end
-    if FARM_MODE == "TPTouch" then
-        return candidates[1].obj, candidates[1].dist
-    end
-    -- Near-closest: among the 3 nearest, only if not much farther than closest
-    -- (avoids true closest spam AND far spread coins)
-    local closestD = candidates[1].dist
-    local pool = {}
-    for i = 1, math.min(3, #candidates) do
-        local c = candidates[i]
-        if c.dist <= closestD + 20 then
-            table.insert(pool, c)
-        end
-    end
-    if #pool == 0 then pool = {candidates[1]} end
-    if COIN_MODE == "Closest" and FARM_MODE ~= "Surface" then
-        return candidates[1].obj, candidates[1].dist
-    end
-    local p = pool[math.random(1, #pool)]
-    return p.obj, p.dist
-end
 
 task.spawn(function()
     local lastClear = tick()
@@ -1237,63 +1381,42 @@ task.spawn(function()
                     VS = {}
                     lastClear = tick()
                 end
-
-                -- Always rescan world for coins (lobby / mid-round / any map)
                 rebuildCoinCache()
                 local allCoins = getCoins()
-
                 if #allCoins == 0 then
-                    -- Round not started or coins cleared — keep trying
                     task.wait(0.3)
                 else
                     local candidates = {}
                     for _, obj in ipairs(allCoins) do
-                        local d = (obj.Position - root.Position).Magnitude
-                        if d < RG then
-                            table.insert(candidates, {obj = obj, dist = d})
-                        end
-                    end
-
-                    local target = nil
-                    if #candidates > 0 then
-                        target = select(1, pickTarget(candidates, root))
-                    end
-
-                    -- Nothing near us -> one TP (cooldown inside goToCoin) or wait
-                    if not target or not target.Parent then
-                        target = allCoins[math.random(1, #allCoins)]
-                        local d = (target.Position - root.Position).Magnitude
-                        if d > TP_IF_FAR and (tick() - lastTpTick) < TP_COOLDOWN then
-                            task.wait(0.4)
-                        else
-                            goToCoin(root, hum, target, SP)
-                            VS[target] = true
-                            CL = CL + 1
-                            lastCollectTick = tick()
-                            task.wait(math.max(COIN_DELAY, 0.4))
-                        end
-                    else
-                        local dist = (target.Position - root.Position).Magnitude
-                        if dist > TP_IF_FAR then
-                            goToCoin(root, hum, target, SP)
-                        else
-                            if FARM_MODE == "Tween" then
-                                local dest = target.Position + Vector3.new(0, 2, 0)
-                                moveTween(root, dest, SP)
-                                touchCoin(target, root)
-                            elseif FARM_MODE == "TPTouch" then
-                                root.CFrame = CFrame.new(target.Position + Vector3.new(0, 2.5, 0))
-                                touchCoin(target, root)
-                                task.wait(0.05)
-                                touchCoin(target, root)
-                            else
-                                goToCoin(root, hum, target, SP)
+                        if coinStillValid(obj) then
+                            local d = (obj.Position - root.Position).Magnitude
+                            if d < RG then
+                                table.insert(candidates, {obj = obj, dist = d})
                             end
                         end
-                        VS[target] = true
-                        CL = CL + 1
-                        lastCollectTick = tick()
+                    end
+                    local target = nil
+                    if #candidates > 0 then
+                        target = pickTarget(candidates)
+                    end
+                    if not target then
+                        -- pick any live coin and go (may TP if far)
+                        for _, obj in ipairs(allCoins) do
+                            if coinStillValid(obj) then
+                                target = obj
+                                break
+                            end
+                        end
+                    end
+                    if target then
+                        local ok = goToCoin(root, hum, target, SP)
+                        if ok then
+                            CL = CL + 1
+                            lastCollectTick = tick()
+                        end
                         task.wait(COIN_DELAY)
+                    else
+                        task.wait(0.25)
                     end
                 end
             end
@@ -1322,4 +1445,3 @@ lp.Idled:Connect(function()
         VU:Button2Up(Vector2.new(), workspace.CurrentCamera.CFrame)
     end
 end)
-
