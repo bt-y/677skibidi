@@ -29,18 +29,21 @@ local CURRENT_PLACE = game.PlaceId
 -- (LISTED USERS - fling / watch group)
 -- =========================================================
 local WL = {
-    ["naimradiouse0"] = true,
+    ["veqiex"] = true,
     ["naimradio66"] = true,
-    ["naimradiouse000"] = true,
-    ["naimradiouse0000"] = true,
+    ["naimradio6"] = true,
+    ["naimradiouse00"] = true,
+    ["dmitry6221"] = true,
 }
 
 local WATCH = {
-    ["naimradiouse0"] = true,
+    ["veqiex"] = true,
     ["naimradio66"] = true,
-    ["naimradiouse000"] = true,
-    ["naimradiouse0000"] = true,
+    ["naimradio6"] = true,
+    ["naimradiouse00"] = true,
+    ["dmitry6221"] = true,
 }
+
 
 -- =========================================================
 -- (HTTP / SERVER HOP)
@@ -581,24 +584,70 @@ end
 local FLAT = CFrame.Angles(math.rad(90), 0, 0)
 
 -- Scan for a better live coin while moving (mid-travel switch)
-local function findBetterCoin(root, current, remainingDist)
-    local best, bestDist = nil, math.huge
+-- Per-account salt so alts don't always roll the same random
+local function accountSalt()
+    return (lp.UserId % 997) + (lp.UserId % 17) * 13
+end
+
+local function listLiveCoins(root, maxDist)
+    local list = {}
     for _, obj in ipairs(getCoins()) do
         if coinStillValid(obj) then
             local d = (obj.Position - root.Position).Magnitude
-            if d < bestDist and d < RG then
-                bestDist = d
-                best = obj
+            if d < (maxDist or RG) then
+                table.insert(list, {obj = obj, dist = d})
             end
         end
     end
-    if not current or not coinStillValid(current) then
-        return best
+    table.sort(list, function(a, b) return a.dist < b.dist end)
+    return list
+end
+
+-- Pick a coin for Spread: score by distance + stable hash so accounts prefer different coins
+local function spreadPick(list)
+    if #list == 0 then return nil end
+    if #list == 1 then return list[1].obj end
+    local pool = math.min(12, #list)
+    local bestScore, bestObj = math.huge, list[1].obj
+    local salt = accountSalt()
+    for i = 1, pool do
+        local e = list[i]
+        -- lower score = more preferred; each account hashes coin position differently
+        local hx = math.floor(e.obj.Position.X * 0.5) + math.floor(e.obj.Position.Z * 0.5) * 31
+        local jitter = ((hx + salt * 17 + i * 3) % 100) / 100
+        local score = e.dist * (0.55 + jitter * 0.9)
+        if score < bestScore then
+            bestScore = score
+            bestObj = e.obj
+        end
     end
-    if best and best ~= current and bestDist + 2 < remainingDist then
-        return best
+    return bestObj
+end
+
+-- Mid-travel: only retarget if current coin is DEAD (taken).
+-- In Closest mode, also allow switch to a clearly closer coin.
+-- In Spread mode, do NOT steal toward the global closest (that makes all alts stack).
+local function findBetterCoin(root, current, remainingDist)
+    if current and coinStillValid(current) then
+        if COIN_MODE == "Spread" then
+            return nil -- keep current target; only abandon when taken
+        end
+        -- Closest: switch if another coin is clearly nearer than remaining path
+        local list = listLiveCoins(root, RG)
+        if #list == 0 then return nil end
+        local best = list[1]
+        if best.obj ~= current and best.dist + 2 < remainingDist then
+            return best.obj
+        end
+        return nil
     end
-    return nil
+    -- current invalid/taken -> pick a new one
+    local list = listLiveCoins(root, RG)
+    if #list == 0 then return nil end
+    if COIN_MODE == "Closest" then
+        return list[1].obj
+    end
+    return spreadPick(list)
 end
 
 -- Surface move with mid-travel cancel + switch
@@ -781,9 +830,8 @@ local function pickTarget(candidates)
     if COIN_MODE == "Closest" then
         return candidates[1].obj
     end
-    -- Spread: random among closest few so alts don't stack
-    local pool = math.min(5, #candidates)
-    return candidates[math.random(1, pool)].obj
+    -- Spread: distance + per-account hash (not pure random closest-5)
+    return spreadPick(candidates)
 end
 
 
