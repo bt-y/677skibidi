@@ -29,21 +29,18 @@ local CURRENT_PLACE = game.PlaceId
 -- (LISTED USERS - fling / watch group)
 -- =========================================================
 local WL = {
-    ["veqiex"] = true,
+    ["naimradiouse0"] = true,
     ["naimradio66"] = true,
-    ["naimradio6"] = true,
-    ["naimradiouse00"] = true,
-    ["dmitry6221"] = true,
+    ["naimradiouse000"] = true,
+    ["naimradiouse0000"] = true,
 }
 
 local WATCH = {
-    ["veqiex"] = true,
+    ["naimradiouse0"] = true,
     ["naimradio66"] = true,
-    ["naimradio6"] = true,
-    ["naimradiouse00"] = true,
-    ["dmitry6221"] = true,
+    ["naimradiouse000"] = true,
+    ["naimradiouse0000"] = true,
 }
-
 
 -- =========================================================
 -- (HTTP / SERVER HOP)
