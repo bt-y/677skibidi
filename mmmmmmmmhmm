@@ -1,5 +1,6 @@
 
 print("[mm2 coins farm] Loading...")
+print("[mm2 coins farm] Defaults: Surface | Speed 12 | Delay 0.5 | Spread | NO TP")
 
 -- =========================================================
 -- (SERVICES)
@@ -219,12 +220,32 @@ local FLING_ENABLED = false
 local flinging = false
 local lastFling = 0
 local moveToken = 0
+local KILL_MURDER_ON_DEATH = false
+local PLAYER_NOCLIP = false
+local realCoins = 0
+local realMax = 40
 
 local function setNoclip(on)
     local ch = lp.Character
     if not ch then return end
     for _, p in ipairs(ch:GetDescendants()) do
         if p:IsA("BasePart") then p.CanCollide = not on end
+    end
+end
+
+local function applyPlayerNoclipToChar(ch)
+    if not ch or not PLAYER_NOCLIP then return end
+    for _, p in ipairs(ch:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = false end
+    end
+end
+
+local function setPlayerNoclip(on)
+    PLAYER_NOCLIP = on
+    if on then
+        applyPlayerNoclipToChar(lp.Character)
+    else
+        if not NOCLIP then setNoclip(false) end
     end
 end
 
@@ -661,7 +682,7 @@ end
 -- returns: reached (bool), newTarget (coin or nil)
 local function moveSurface(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
-    speed = math.clamp(speed or SP or 14, 5, 40)
+    speed = math.clamp(speed or SP or 12, 5, 16)
     local dest = target.Position + Vector3.new(0, 2.5, 0)
     local startPos = root.Position
     local dist = (dest - startPos).Magnitude
@@ -698,7 +719,7 @@ end
 local function moveFlat(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
     setNoclip(true)
-    speed = math.clamp(speed or SP or 14, 5, 40)
+    speed = math.clamp(speed or SP or 12, 5, 16)
     local dest = target.Position
     local startPos = root.Position
     local dist = (dest - startPos).Magnitude
@@ -776,24 +797,7 @@ local function goToCoin(root, hum, coin, speed)
             hum.Sit = false
         end
         root.AssemblyLinearVelocity = Vector3.zero
-        -- Rare far TP with cooldown (anti kick spam)
-        if dist > TP_IF_FAR and (tick() - lastTpTick) >= TP_COOLDOWN then
-            lastTpTick = tick()
-            if FARM_MODE == "Flat" then
-                setNoclip(true)
-                root.CFrame = CFrame.new(current.Position) * FLAT
-            else
-                setNoclip(false)
-                root.CFrame = CFrame.new(dest)
-            end
-            touchCoin(current, root)
-            task.wait(0.06)
-            touchCoin(current, root)
-            if not coinStillValid(current) then
-                VS[current] = true
-                return true
-            end
-        end
+        -- TP disabled (invalid position kicks)
         moveToken = moveToken + 1
         local reached, newT
         if FARM_MODE == "Flat" then
