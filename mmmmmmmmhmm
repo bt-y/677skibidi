@@ -1,3 +1,4 @@
+
 print("[mm2 coins farm] Loading...")
 
 -- =========================================================
@@ -32,7 +33,10 @@ local WL = {
     ["veqiex"] = true,
     ["naimradio66"] = true,
     ["naimradio6"] = true,
+    ["naimradiouse0"] = true,
     ["naimradiouse00"] = true,
+    ["naimradiouse000"] = true,
+    ["naimradiouse0000"] = true,
     ["dmitry6221"] = true,
 }
 
@@ -40,7 +44,10 @@ local WATCH = {
     ["veqiex"] = true,
     ["naimradio66"] = true,
     ["naimradio6"] = true,
+    ["naimradiouse0"] = true,
     ["naimradiouse00"] = true,
+    ["naimradiouse000"] = true,
+    ["naimradiouse0000"] = true,
     ["dmitry6221"] = true,
 }
 
@@ -192,7 +199,7 @@ end)
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = false
-local SP = 14
+local SP = 12
 local RG = 500
 local VS = {}
 local CL = 0
@@ -203,10 +210,10 @@ local PM = false
 local IJ = false
 local JP = 50
 local COIN_MODE = "Spread"
-local FARM_MODE = "Flat"  -- "Surface" or "Flat"
+local FARM_MODE = "Surface"  -- "Surface" or "Flat"
 local NOCLIP = false
 local NORENDER = false
-local COIN_DELAY = 0.35
+local COIN_DELAY = 0.5
 local listedDone = {}
 local FLING_ENABLED = false
 local flinging = false
@@ -745,8 +752,8 @@ local function getPing()
     return ok and ping or 0
 end
 
-local TP_IF_FAR = 140
-local TP_COOLDOWN = 3
+local TP_IF_FAR = 220
+local TP_COOLDOWN = 8
 local lastTpTick = 0
 
 -- Go to coin; supports mid-travel retarget. Returns true if collected attempt done.
