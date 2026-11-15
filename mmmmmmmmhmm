@@ -94,3 +94,35 @@ local function findLowServer(placeId, maxPlayers)
 
         -- Found a good low server, stop early
         if bestId and bestCount <= maxPlayers then
+            break
+        end
+
+        cursor = data.nextPageCursor or ""
+        if cursor == "" then break end
+        task.wait(0.15)
+    end
+
+    if bestId then
+        print("[Server] Best found:", bestCount, "players |", bestId)
+    else
+        print("[Server] No servers found")
+    end
+    return bestId, bestCount
+end
+
+local function hopLowServer()
+    print("[Server] Scanning for lowest player server...")
+    local jobId, count = findLowServer(CURRENT_PLACE, 3)
+    if not jobId then
+        print("[Server] Failed - try again")
+        return
+    end
+    -- Refuse to hop into a full server (8+)
+    if count and count >= 8 then
+        print("[Server] Only full servers found (" .. count .. "). Skipping hop.")
+        return
+    end
+    print("[Server] Hopping to", count, "player server")
+    pcall(function()
+        TeleportService:TeleportToPlaceInstance(CURRENT_PLACE, jobId, lp)
+    end)
