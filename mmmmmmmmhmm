@@ -1,6 +1,6 @@
 
 print("[mm2 coins farm] Loading...")
-print("[mm2 coins farm] Defaults: Surface | Speed 30 | Delay 0.1 | AutoFarm ON | Hop if >8 players")
+print("[mm2 coins farm] Defaults: Surface | Speed 26 | Delay 0.05 | AutoFarm ON | Hop if >8 players | Version 2.1")
 
 -- =========================================================
 -- (SERVICES)
@@ -144,7 +144,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 30
+local SP = 26
 local RG = 500
 local VS = {}
 local CL = 0
@@ -158,7 +158,7 @@ local COIN_MODE = "Spread"
 local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
 local NOCLIP = false
 local NORENDER = false
-local COIN_DELAY = 0.1
+local COIN_DELAY = 0.05
 local AUTO_HOP_PLAYERS = 8
 local AUTO_HOP_EVERY = 60
 local DEAD_SERVER_SEC = 90
@@ -499,7 +499,7 @@ end
 -- returns: reached (bool), newTarget (coin or nil)
 local function moveSurface(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
-    speed = math.clamp(speed or SP or 30, 5, 30)
+    speed = math.clamp(speed or SP or 26, 5, 26)
     local dest = target.Position + Vector3.new(0, 2.5, 0)
     local startPos = root.Position
     local dist = (dest - startPos).Magnitude
@@ -536,7 +536,7 @@ end
 local function moveFlat(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
     setNoclip(true)
-    speed = math.clamp(speed or SP or 30, 5, 30)
+    speed = math.clamp(speed or SP or 26, 5, 26)
     local dest = target.Position
     local startPos = root.Position
     local dist = (dest - startPos).Magnitude
@@ -653,7 +653,7 @@ local function goToCoin(root, hum, coin, speed)
             current = newT
         elseif reached then
             local tWait = tick()
-            while tick() - tWait < 0.2 do
+            while tick() - tWait < 0.1 do
                 if not (root and root.Parent) then break end
                 if not current.Parent then break end
 
@@ -731,7 +731,7 @@ task.spawn(function()
 end)
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -90, 0, 34)
+title.Size = UDim2.new(0, 155, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
 title.Text = "mm2 coins farm"
@@ -740,6 +740,17 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 16
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = main
+
+local versionTag = Instance.new("TextLabel")
+versionTag.Size = UDim2.fromOffset(46, 20)
+versionTag.Position = UDim2.new(0, 158, 0, 13)
+versionTag.BackgroundTransparency = 1
+versionTag.Text = "v2.1"
+versionTag.TextColor3 = Color3.fromRGB(255, 190, 120)
+versionTag.Font = Enum.Font.GothamBold
+versionTag.TextSize = 11
+versionTag.TextXAlignment = Enum.TextXAlignment.Left
+versionTag.Parent = main
 
 local placeTag = Instance.new("TextLabel")
 placeTag.Size = UDim2.fromOffset(70, 22)
@@ -1274,7 +1285,9 @@ task.spawn(function()
                     VS = {}
                     lastClear = tick()
                 end
-                rebuildCoinCache()
+                -- Coin cache is maintained by DescendantAdded and its own
+                -- periodic refresh task; avoid a costly full Workspace scan
+                -- on every coin-to-coin iteration.
                 local allCoins = getCoins()
                 if #allCoins == 0 then
                     task.wait(0.3)
@@ -1306,8 +1319,12 @@ task.spawn(function()
                         if ok then
                             CL = CL + 1
                             lastCollectTick = tick()
+                            task.wait(COIN_DELAY)
+                        else
+                            -- A missed touch should be retried promptly rather than
+                            -- adding the full between-coin delay.
+                            task.wait(0.05)
                         end
-                        task.wait(COIN_DELAY)
                     else
                         task.wait(0.25)
                     end
@@ -1393,13 +1410,13 @@ task.spawn(function()
 
     AF = true
     FARM_MODE = "Surface"
-    SP = 30
-    COIN_DELAY = 0.1
+    SP = 26
+    COIN_DELAY = 0.05
     lastCollectTick = tick()
 
     if ready then
         rebuildCoinCache()
-        print("[mm2 coins farm] AutoFarm started: Surface | Speed 22.")
+        print("[mm2 coins farm] AutoFarm started: Surface | Speed 26 | Version 2.1.")
     else
         warn("[mm2 coins farm] AutoFarm enabled, but character was not ready yet; it will start when your character loads.")
     end
@@ -1450,4 +1467,4 @@ task.spawn(function()
     end
 end)
 
-print("[mm2 coins farm] AutoFarm ON | Surface | SP=22 | CD=0.5 | hop if >8 players")
+print("[mm2 coins farm] AutoFarm ON | Surface | SP=26 | CD=0.05 | Version 2.1 | hop if >8 players")
