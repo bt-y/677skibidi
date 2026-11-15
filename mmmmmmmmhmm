@@ -18,67 +18,56 @@ local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
 -- =========================================================
--- (REMOVE DEFAULT LOADING SCREEN + HIDE OTHER SCREENGUIS)
+-- (REMOVE ONLY IDENTIFIABLE LOADING UI - KEEP GAME + FARM GUI)
 -- =========================================================
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
-local StarterGui = game:GetService("StarterGui")
 
--- Roblox's built-in loading screen has no ScreenGui name to search for.
--- This is the official API for dismissing that specific loading screen.
 pcall(function()
     ReplicatedFirst:RemoveDefaultLoadingScreen()
 end)
 
--- MM2's custom loading overlay does not have a publicly documented,
--- guaranteed ScreenGui name. Hide every ScreenGui except this script's UI.
-local function hideScreenGuis(container)
+-- Do NOT disable every ScreenGui: that hides the MM2 HUD and can
+-- interfere with the game's normal UI. Only remove objects clearly
+-- named as loading UI. Never touch this script's own farm interface.
+local function removeNamedLoadingUi(container)
     if not container then return end
 
-    local function hideIfScreenGui(obj)
-        if obj:IsA("ScreenGui") and obj.Name ~= "mm2FarmLight" then
+    for _, obj in ipairs(container:GetDescendants()) do
+        local lowerName = string.lower(obj.Name)
+        local isLoadingName = string.find(lowerName, "loading", 1, true) ~= nil
+        local isFarmGui = obj.Name == "mm2FarmLight"
+
+        if isLoadingName and not isFarmGui
+            and (obj:IsA("ScreenGui") or obj:IsA("GuiObject")) then
             pcall(function()
-                obj.Enabled = false
+                obj:Destroy()
             end)
         end
     end
-
-    for _, obj in ipairs(container:GetDescendants()) do
-        hideIfScreenGui(obj)
-    end
-
-    for _, obj in ipairs(container:GetChildren()) do
-        hideIfScreenGui(obj)
-    end
 end
 
-local function hideAllOtherScreens()
-    hideScreenGuis(pg)
-    hideScreenGuis(ReplicatedFirst)
+local function clearNamedLoadingUi()
+    removeNamedLoadingUi(pg)
+    removeNamedLoadingUi(ReplicatedFirst)
 end
 
-hideAllOtherScreens()
+clearNamedLoadingUi()
 
--- Catch ScreenGuis that MM2 creates after the script starts.
 pg.DescendantAdded:Connect(function(obj)
-    if obj:IsA("ScreenGui") and obj.Name ~= "mm2FarmLight" then
-        task.defer(function()
-            pcall(function() obj.Enabled = false end)
-        end)
+    if obj.Name ~= "mm2FarmLight"
+        and string.find(string.lower(obj.Name), "loading", 1, true)
+        and (obj:IsA("ScreenGui") or obj:IsA("GuiObject")) then
+        task.defer(clearNamedLoadingUi)
     end
 end)
 
-ReplicatedFirst.DescendantAdded:Connect(function(obj)
-    if obj:IsA("ScreenGui") then
-        task.defer(function()
-            pcall(function() obj.Enabled = false end)
-        end)
-    end
+ReplicatedFirst.DescendantAdded:Connect(function()
+    task.defer(clearNamedLoadingUi)
 end)
 
--- Re-apply briefly in case the game enables or recreates its loading UI.
 task.spawn(function()
     for _ = 1, 120 do
-        hideAllOtherScreens()
+        clearNamedLoadingUi()
         task.wait(0.5)
     end
 end)
@@ -94,3 +83,14 @@ local isHidden = (game.PlaceId == HIDDEN_ID)
 local CURRENT_PLACE = game.PlaceId
 
 -- =========================================================
+-- =========================================================
+-- (HTTP / SERVER HOP)
+-- =========================================================
+local function httpGet(url)
+    local req = request or (syn and syn.request) or (http and http.request)
+    if not req then return nil end
+    local ok, res = pcall(function()
+        return req({Url = url, Method = "GET"})
+    end)
+    if ok and res and res.Body then return res.Body end
+    return nil
