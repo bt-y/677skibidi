@@ -1,6 +1,6 @@
 
 print("[mm2 coins farm] Loading...")
-print("[mm2 coins farm] Defaults: Surface | Speed 12 | Delay 0.5 | Spread | NO TP")
+print("[mm2 coins farm] Defaults: Surface | Speed 18 | Delay 0.5 | AutoFarm ON | Hop if >8 players")
 
 -- =========================================================
 -- (SERVICES)
@@ -145,13 +145,13 @@ end
 -- =========================================================
 -- (CORE VARIABLES)
 -- =========================================================
-local AF = false
-local SP = 12
+local AF = true
+local SP = 18
 local RG = 500
 local VS = {}
 local CL = 0
 local lastCollectTick = tick()
-local AK = false
+local AK = true
 local RF = true
 local PM = false
 local IJ = false
@@ -161,6 +161,10 @@ local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
 local NOCLIP = false
 local NORENDER = false
 local COIN_DELAY = 0.5
+local AUTO_HOP_PLAYERS = 8
+local AUTO_HOP_EVERY = 60
+local DEAD_SERVER_SEC = 90
+local lastHopAttempt = 0
 local listedDone = {}
 local FLING_ENABLED = false
 local flinging = false
@@ -628,7 +632,7 @@ end
 -- returns: reached (bool), newTarget (coin or nil)
 local function moveSurface(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
-    speed = math.clamp(speed or SP or 12, 5, 16)
+    speed = math.clamp(speed or SP or 18, 5, 22)
     local dest = target.Position + Vector3.new(0, 2.5, 0)
     local startPos = root.Position
     local dist = (dest - startPos).Magnitude
@@ -665,7 +669,7 @@ end
 local function moveFlat(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
     setNoclip(true)
-    speed = math.clamp(speed or SP or 12, 5, 16)
+    speed = math.clamp(speed or SP or 18, 5, 22)
     local dest = target.Position
     local startPos = root.Position
     local dist = (dest - startPos).Magnitude
@@ -727,68 +731,15 @@ local function touchCoinFast(coin, root)
     end
 end
 
--- FastUnder (SAFE): same as Surface movement path, flat pose, NO teleport
--- Instant CFrame jumps cause Invalid position (Error 267). This mode never TPs.
-local FAST_MAX_SPEED = 14
-
+-- FastUnder = same collector as Surface (upright, above coin, mid-travel switch)
+-- Flat pose / under-map paths were dragging into void and missing coins.
+-- There is NO client API to "see" Invalid position anticheat before a kick.
+-- Safety = no teleport + moderate speed + your CD (set to 2 if you want).
 local function moveFastUnder(root, hum, target, speed)
-    if not root or not target or not coinStillValid(target) then return false, nil end
-    setNoclip(true)
-    if hum then
-        hum.PlatformStand = false
-        hum.Sit = false
-        hum.AutoRotate = false
-    end
-    speed = math.clamp(speed or SP or 12, 6, FAST_MAX_SPEED)
-    local dest = target.Position + Vector3.new(0, 2.2, 0)
-    local startPos = root.Position
-    local dist = (dest - startPos).Magnitude
-    local myToken = moveToken
-
-    if dist < 3.5 then
-        root.CFrame = CFrame.new(dest) * FLAT
-        root.AssemblyLinearVelocity = Vector3.zero
-    else
-        local duration = math.clamp(dist / speed, 0.12, 5)
-        local t0 = tick()
-        while root and root.Parent do
-            if myToken ~= moveToken then return false, nil end
-            if not coinStillValid(target) then
-                VS[target] = true
-                return true, nil
-            end
-            local remaining = (dest - root.Position).Magnitude
-            local better = findBetterCoin(root, target, remaining)
-            if better and better ~= target then
-                return false, better
-            end
-            local a = math.min((tick() - t0) / duration, 1)
-            local s = a * a * (3 - 2 * a)
-            root.CFrame = CFrame.new(startPos:Lerp(dest, s)) * FLAT
-            root.AssemblyLinearVelocity = Vector3.zero
-            if a >= 1 then break end
-            task.wait()
-        end
-    end
-
-    local tWait = tick()
-    while tick() - tWait < 0.5 and root and root.Parent do
-        if not coinStillValid(target) then
-            VS[target] = true
-            return true, nil
-        end
-        root.CFrame = CFrame.new(target.Position + Vector3.new(0, 2.2, 0)) * FLAT
-        root.AssemblyLinearVelocity = Vector3.zero
-        touchCoin(target, root)
-        touchCoinFast(target, root)
-        task.wait(0.05)
-    end
-
-    if not coinStillValid(target) then
-        VS[target] = true
-        return true, nil
-    end
-    return false, nil
+    if hum then hum.AutoRotate = true end
+    setNoclip(NOCLIP)
+    -- reuse proven surface mover (retargets if coin is taken mid-path)
+    return moveSurface(root, target, speed)
 end
 
 local function getPing()
@@ -836,24 +787,21 @@ local function goToCoin(root, hum, coin, speed)
         if newT and newT ~= current then
             current = newT
         elseif reached then
-            if FARM_MODE ~= "FastUnder" then
-                local tWait = tick()
-                while tick() - tWait < 0.45 do
-                    if not (root and root.Parent) then break end
-                    if not coinStillValid(current) then break end
-                    if FARM_MODE == "Flat" then
-                        root.CFrame = CFrame.new(current.Position) * FLAT
-                    else
-                        root.CFrame = CFrame.new(current.Position + Vector3.new(0, 2.5, 0))
-                    end
-                    touchCoin(current, root)
-                    task.wait(0.04)
+            local tWait = tick()
+            while tick() - tWait < 0.45 do
+                if not (root and root.Parent) then break end
+                if not coinStillValid(current) then break end
+                if FARM_MODE == "Flat" then
+                    root.CFrame = CFrame.new(current.Position) * FLAT
+                else
+                    root.CFrame = CFrame.new(current.Position + Vector3.new(0, 2.5, 0))
                 end
-                VS[current] = true
+                touchCoin(current, root)
+                task.wait(0.04)
             end
+            VS[current] = true
             return true
         else
-            -- do not blacklist forever on a failed attempt (esp. FastUnder)
             return false
         end
     end
@@ -1501,7 +1449,7 @@ end)
 
 -- Noclip only when toggle is ON (not forced by AutoFarm)
 RS.Stepped:Connect(function()
-    if NOCLIP or (AF and (FARM_MODE == "FastUnder" or FARM_MODE == "Flat")) then
+    if NOCLIP or (AF and FARM_MODE == "Flat") then
         setNoclip(true)
     end
 end)
@@ -1519,3 +1467,97 @@ lp.Idled:Connect(function()
         VU:Button2Up(Vector2.new(), workspace.CurrentCamera.CFrame)
     end
 end)
+
+
+-- =========================================================
+-- (AUTO START + PLAYER-COUNT HOP + DEAD SERVER DETECT)
+-- Kick auto-rejoin cannot run after a kick (script dies).
+-- Put this file in your executor AUTOEXEC folder so it runs
+-- again when you rejoin. Optional-on-teleport helps for hops only.
+-- =========================================================
+
+-- Persist farm across intentional teleports (server hop)
+pcall(function()
+    if queue_on_teleport then
+        local src = [=[
+            task.spawn(function()
+                task.wait(3)
+                pcall(function()
+                    loadstring(game:HttpGet("https://raw.githubusercontent.com/bt-y/677skibidi/refs/heads/main/mmmmmmmmhmm"))()
+                end)
+            end)
+        ]=]
+        -- If you do not use that URL, leave autoexec instead; this is optional.
+        -- queue_on_teleport(src)
+    end
+end)
+
+-- Auto-start Surface farm once character is ready
+task.spawn(function()
+    local n = 0
+    while n < 30 do
+        n = n + 1
+        local ch = lp.Character
+        local root = ch and ch:FindFirstChild("HumanoidRootPart")
+        local hum = ch and ch:FindFirstChild("Humanoid")
+        if root and hum and hum.Health > 0 then
+            AF = true
+            FARM_MODE = "Surface"
+            SP = 18
+            COIN_DELAY = 0.5
+            lastCollectTick = tick()
+            rebuildCoinCache()
+            break
+        end
+        task.wait(0.5)
+    end
+    AF = true
+    FARM_MODE = "Surface"
+end)
+
+-- Every minute: if too many players, hop to a smaller server
+task.spawn(function()
+    task.wait(15)
+    while true do
+        task.wait(AUTO_HOP_EVERY)
+        if not AF then
+            -- still hop if crowded even when farm off
+        end
+        local count = #P:GetPlayers()
+        if count > AUTO_HOP_PLAYERS then
+            if tick() - lastHopAttempt > 45 then
+                lastHopAttempt = tick()
+                print("[AutoHop] Players:", count, "> ", AUTO_HOP_PLAYERS, " hopping...")
+                pcall(hopLowServer)
+            end
+        end
+    end
+end)
+
+-- Dead / bugged server: farm on, no coin collect for a long time while coins may exist or map never starts
+task.spawn(function()
+    task.wait(30)
+    while true do
+        task.wait(20)
+        if not AF then
+            lastCollectTick = tick()
+        else
+            local idle = tick() - lastCollectTick
+            local coinN = 0
+            pcall(function()
+                coinN = #getCoins()
+            end)
+            -- stuck forever with no collects
+            if idle > DEAD_SERVER_SEC then
+                if tick() - lastHopAttempt > 45 then
+                    lastHopAttempt = tick()
+                    print("[DeadServer] No collect for", math.floor(idle), "s | coins cache:", coinN, " hopping")
+                    VS = {}
+                    pcall(hopLowServer)
+                end
+            end
+        end
+    end
+end)
+
+print("[mm2 coins farm] AutoFarm ON | Surface | SP=18 | CD=0.5 | hop if >8 players")
