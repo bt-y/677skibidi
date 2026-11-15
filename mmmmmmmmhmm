@@ -126,3 +126,1328 @@ local function hopLowServer()
     pcall(function()
         TeleportService:TeleportToPlaceInstance(CURRENT_PLACE, jobId, lp)
     end)
+end
+
+local function copyJoinCode()
+    local code = 'game:GetService("TeleportService"):TeleportToPlaceInstance(' .. tostring(game.PlaceId) .. ', "' .. tostring(game.JobId) .. '")'
+    pcall(function()
+        if setclipboard then setclipboard(code)
+        elseif toclipboard then toclipboard(code) end
+    end)
+    print("[JobId]", code)
+    return code
+end
+
+-- =========================================================
+-- (FARM ONLY - NO TRANSFER / NO WEBHOOK / NO WISPBYTE)
+-- =========================================================
+-- (CORE VARIABLES)
+-- =========================================================
+local AF = true
+local SP = 22
+local RG = 500
+local VS = {}
+local CL = 0
+local lastCollectTick = tick()
+local AK = true
+local RF = true
+local PM = false
+local IJ = false
+local JP = 50
+local COIN_MODE = "Spread"
+local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
+local NOCLIP = false
+local NORENDER = false
+local COIN_DELAY = 0.5
+local AUTO_HOP_PLAYERS = 8
+local AUTO_HOP_EVERY = 60
+local DEAD_SERVER_SEC = 90
+local lastHopAttempt = 0
+local moveToken = 0
+local PLAYER_NOCLIP = false
+local realCoins = 0
+local realMax = 40
+
+local function setNoclip(on)
+    local ch = lp.Character
+    if not ch then return end
+    for _, p in ipairs(ch:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = not on end
+    end
+end
+
+local function applyPlayerNoclipToChar(ch)
+    if not ch or not PLAYER_NOCLIP then return end
+    for _, p in ipairs(ch:GetDescendants()) do
+        if p:IsA("BasePart") then p.CanCollide = false end
+    end
+end
+
+local function setPlayerNoclip(on)
+    PLAYER_NOCLIP = on
+    if on then
+        applyPlayerNoclipToChar(lp.Character)
+    else
+        if not NOCLIP then setNoclip(false) end
+    end
+end
+
+-- Fix stuck character (anchor / platformstand / collisions)
+local function restoreMovement()
+    local ch = lp.Character
+    if not ch then return end
+    local root = ch:FindFirstChild("HumanoidRootPart")
+    local hum = ch:FindFirstChild("Humanoid")
+    pcall(function()
+        if root then
+            root.Anchored = false
+            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        end
+        if hum then
+            hum.PlatformStand = false
+            hum.Sit = false
+            hum.AutoRotate = true
+            if hum.WalkSpeed < 1 then hum.WalkSpeed = 16 end
+        end
+        if not NOCLIP then setNoclip(false) end
+    end)
+end
+
+-- Anti-void: ONLY lower kill plane. No CFrame, no pull, no recover teleport.
+local VOID_ON = true
+local function setVoidProtect(on)
+    VOID_ON = on
+    pcall(function()
+        workspace.FallenPartsDestroyHeight = on and -50000 or -500
+    end)
+end
+pcall(function() setVoidProtect(true) end)
+
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if VOID_ON then
+            pcall(function() workspace.FallenPartsDestroyHeight = -50000 end)
+        end
+    end
+end)
+
+local function epm()
+    pcall(function()
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        LG.GlobalShadows = false
+        LG.FogEnd = 9e9
+        LG.Brightness = 2
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Beam")
+                or v:IsA("Fire") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                pcall(function() v.Enabled = false end)
+            end
+            if v:IsA("MeshPart") then
+                local keep = v:IsDescendantOf(lp.Character) or v.Name == "Coin_Server"
+                if not keep and v.Size.Magnitude > 8 then
+                    pcall(function() v.Transparency = 1 v.CanCollide = false end)
+                end
+            end
+            if v:IsA("PointLight") or v:IsA("SpotLight") or v:IsA("SurfaceLight") then
+                pcall(function() v.Enabled = false end)
+            end
+        end
+    end)
+    PM = true
+end
+
+local function setNoRender(on)
+    NORENDER = on
+    pcall(function()
+        if on then
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+            LG.FogEnd = 0
+            LG.Brightness = 0
+            workspace.CurrentCamera.FieldOfView = 1
+            for _, v in ipairs(workspace:GetDescendants()) do
+                if v:IsA("BasePart") and not v:IsDescendantOf(lp.Character) then
+                    v.LocalTransparencyModifier = 1
+                end
+            end
+        else
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+            LG.FogEnd = 100000
+            LG.Brightness = 1
+            workspace.CurrentCamera.FieldOfView = 70
+            for _, v in ipairs(workspace:GetDescendants()) do
+                if v:IsA("BasePart") then v.LocalTransparencyModifier = 0 end
+            end
+        end
+    end)
+end
+
+local function getRole(pl)
+    local ok, roles = pcall(function()
+        local r = RPS:FindFirstChild("GetPlayerData", true)
+        if r then return r:InvokeServer() end
+    end)
+    if ok and roles and roles[pl.Name] then
+        return roles[pl.Name].Role or "Innocent"
+    end
+    local ch = pl.Character
+    if ch then
+        if ch:FindFirstChild("Knife") or (pl.Backpack and pl.Backpack:FindFirstChild("Knife")) then return "Murderer" end
+        if ch:FindFirstChild("Gun") or (pl.Backpack and pl.Backpack:FindFirstChild("Gun")) then return "Sheriff" end
+    end
+    return "Innocent"
+end
+
+local function getMurderer()
+    for _, pl in ipairs(P:GetPlayers()) do
+        if getRole(pl) == "Murderer" then return pl end
+    end
+end
+
+-- =========================================================
+-- (COIN COLLECTION)
+-- =========================================================
+local function removeAllDecals()
+    local n = 0
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Decal") or v:IsA("Texture") then
+            pcall(function() v:Destroy() end)
+            n = n + 1
+        end
+    end
+    print("[Decals] Removed", n)
+end
+
+-- Cached coins (full GetDescendants every loop was causing 5-10s freezes)
+local coinCache = {}
+local lastCoinScan = 0
+
+local function isCoinPart(v)
+    if not v or not v.Parent or VS[v] then return false end
+    if not v:IsA("BasePart") then return false end
+    local n = v.Name
+    return n == "Coin_Server" or n == "Coin" or n == "Coin_Client"
+end
+
+local function rebuildCoinCache()
+    coinCache = {}
+    -- Prefer CoinContainer (fast + reliable)
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj.Name == "CoinContainer" then
+            for _, child in ipairs(obj:GetChildren()) do
+                if isCoinPart(child) then
+                    table.insert(coinCache, child)
+                end
+            end
+        end
+    end
+    if #coinCache == 0 then
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if isCoinPart(v) then
+                table.insert(coinCache, v)
+            end
+        end
+    end
+    lastCoinScan = tick()
+    return #coinCache
+end
+
+workspace.DescendantAdded:Connect(function(obj)
+    task.defer(function()
+        if isCoinPart(obj) then
+            table.insert(coinCache, obj)
+        elseif obj.Name == "TouchInterest" or obj.ClassName == "TouchTransmitter" then
+            local p = obj.Parent
+            if isCoinPart(p) then table.insert(coinCache, p) end
+        end
+    end)
+end)
+
+task.spawn(function()
+    task.wait(0.5)
+    rebuildCoinCache()
+    while true do
+        task.wait(AF and 0.4 or 2)
+        rebuildCoinCache()
+    end
+end)
+
+-- Hidden/secret MM2 maps are not near 0,0,0 (logs showed Z~9000).
+-- Use densest coin cluster instead of absolute world bounds.
+local function getCoins()
+    local list = {}
+    for i = #coinCache, 1, -1 do
+        local v = coinCache[i]
+        if isCoinPart(v) then
+            table.insert(list, v)
+        else
+            table.remove(coinCache, i)
+        end
+    end
+    if #list == 0 then
+        rebuildCoinCache()
+        for _, v in ipairs(coinCache) do
+            if isCoinPart(v) then table.insert(list, v) end
+        end
+    end
+    return list
+end
+
+local function readCoinGui()
+    pcall(function()
+        for _, g in ipairs(pg:GetDescendants()) do
+            if g:IsA("TextLabel") or g:IsA("TextButton") then
+                local t = g.Text or ""
+                local a, b = string.match(t, "(%d+)%s*/%s*(%d+)")
+                if a and b then
+                    local cur, mx = tonumber(a), tonumber(b)
+                    if cur and mx and mx >= 10 and mx <= 80 then
+                        realCoins = cur
+                        realMax = mx
+                        return
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Safe move: duration = distance/speed (faster response, less idle delay)
+local function coinStillValid(coin)
+    if not coin or not coin.Parent or VS[coin] then return false end
+    if not coin:IsA("BasePart") then return false end
+    local name = coin.Name
+    if name ~= "Coin_Server" and name ~= "Coin" and name ~= "Coin_Client" then
+        return false
+    end
+    -- Some MM2 coin instances do not expose TouchInterest to the client.
+    -- Do not discard an otherwise valid coin just because that child is absent.
+    return true
+end
+
+local FLAT = CFrame.Angles(math.rad(90), 0, 0)
+
+-- Scan for a better live coin while moving (mid-travel switch)
+-- Per-account salt so alts don't always roll the same random
+local function accountSalt()
+    return (lp.UserId % 997) + (lp.UserId % 17) * 13
+end
+
+local function listLiveCoins(root, maxDist)
+    local list = {}
+    for _, obj in ipairs(getCoins()) do
+        if coinStillValid(obj) then
+            local d = (obj.Position - root.Position).Magnitude
+            if d < (maxDist or RG) then
+                table.insert(list, {obj = obj, dist = d})
+            end
+        end
+    end
+    table.sort(list, function(a, b) return a.dist < b.dist end)
+    return list
+end
+
+-- Pick a coin for Spread: score by distance + stable hash so accounts prefer different coins
+local function spreadPick(list)
+    if #list == 0 then return nil end
+    if #list == 1 then return list[1].obj end
+    local pool = math.min(12, #list)
+    local bestScore, bestObj = math.huge, list[1].obj
+    local salt = accountSalt()
+    for i = 1, pool do
+        local e = list[i]
+        -- lower score = more preferred; each account hashes coin position differently
+        local hx = math.floor(e.obj.Position.X * 0.5) + math.floor(e.obj.Position.Z * 0.5) * 31
+        local jitter = ((hx + salt * 17 + i * 3) % 100) / 100
+        local score = e.dist * (0.55 + jitter * 0.9)
+        if score < bestScore then
+            bestScore = score
+            bestObj = e.obj
+        end
+    end
+    return bestObj
+end
+
+-- Mid-travel: only retarget if current coin is DEAD (taken).
+-- In Closest mode, also allow switch to a clearly closer coin.
+-- In Spread mode, do NOT steal toward the global closest (that makes all alts stack).
+local function findBetterCoin(root, current, remainingDist)
+    if current and coinStillValid(current) then
+        if COIN_MODE == "Spread" then
+            return nil -- keep current target; only abandon when taken
+        end
+        -- Closest: switch if another coin is clearly nearer than remaining path
+        local list = listLiveCoins(root, RG)
+        if #list == 0 then return nil end
+        local best = list[1]
+        if best.obj ~= current and best.dist + 2 < remainingDist then
+            return best.obj
+        end
+        return nil
+    end
+    -- current invalid/taken -> pick a new one
+    local list = listLiveCoins(root, RG)
+    if #list == 0 then return nil end
+    if COIN_MODE == "Closest" then
+        return list[1].obj
+    end
+    return spreadPick(list)
+end
+
+-- Surface move with mid-travel cancel + switch
+-- returns: reached (bool), newTarget (coin or nil)
+local function moveSurface(root, target, speed)
+    if not root or not root.Parent or not target then return false, nil end
+    speed = math.clamp(speed or SP or 22, 5, 22)
+    local dest = target.Position + Vector3.new(0, 2.5, 0)
+    local startPos = root.Position
+    local dist = (dest - startPos).Magnitude
+    if dist < 3.5 then
+        root.CFrame = CFrame.new(dest)
+        return true, nil
+    end
+    local duration = math.clamp(dist / speed, 0.08, 4)
+    local t0 = tick()
+    local myToken = moveToken
+    while root and root.Parent do
+        if myToken ~= moveToken then return false, nil end
+        if not coinStillValid(target) then
+            VS[target] = true
+            local better = findBetterCoin(root, nil, math.huge)
+            return false, better
+        end
+        local remaining = (dest - root.Position).Magnitude
+        local better = findBetterCoin(root, target, remaining)
+        if better then
+            return false, better
+        end
+        local alpha = math.min((tick() - t0) / duration, 1)
+        local s = alpha * alpha * (3 - 2 * alpha)
+        root.CFrame = CFrame.new(startPos:Lerp(dest, s))
+        root.AssemblyLinearVelocity = Vector3.zero
+        if alpha >= 1 then return true, nil end
+        task.wait()
+    end
+    return false, nil
+end
+
+-- Flat move with mid-travel cancel + switch
+local function moveFlat(root, target, speed)
+    if not root or not root.Parent or not target then return false, nil end
+    setNoclip(true)
+    speed = math.clamp(speed or SP or 22, 5, 22)
+    local dest = target.Position
+    local startPos = root.Position
+    local dist = (dest - startPos).Magnitude
+    if dist < 1.8 then
+        root.CFrame = CFrame.new(dest) * FLAT
+        root.AssemblyLinearVelocity = Vector3.zero
+        return true, nil
+    end
+    local duration = math.clamp(dist / speed, 0.05, 3)
+    local t0 = tick()
+    local myToken = moveToken
+    while root and root.Parent do
+        if myToken ~= moveToken then return false, nil end
+        if not coinStillValid(target) then
+            VS[target] = true
+            local better = findBetterCoin(root, nil, math.huge)
+            return false, better
+        end
+        local remaining = (dest - root.Position).Magnitude
+        local better = findBetterCoin(root, target, remaining)
+        if better then
+            return false, better
+        end
+        local alpha = math.min((tick() - t0) / duration, 1)
+        local p = startPos:Lerp(dest, alpha)
+        root.CFrame = CFrame.new(p) * FLAT
+        root.AssemblyLinearVelocity = Vector3.zero
+        if alpha >= 1 then return true, nil end
+        task.wait()
+    end
+    return false, nil
+end
+
+local function touchCoin(coin, root)
+    if not coin or not coin.Parent or not root then return end
+    if type(firetouchinterest) == "function" then
+        pcall(function()
+            firetouchinterest(root, coin, 0)
+            task.wait(0.03)
+            firetouchinterest(root, coin, 1)
+        end)
+    end
+end
+
+local function touchCoinFast(coin, root)
+    if not coin or not root then return end
+    for _ = 1, 4 do
+        pcall(function()
+            if firetouchinterest then
+                firetouchinterest(root, coin, 0)
+                firetouchinterest(root, coin, 1)
+                firetouchinterest(coin, root, 0)
+                firetouchinterest(coin, root, 1)
+            end
+        end)
+        task.wait(0.02)
+    end
+end
+
+-- FastUnder = same collector as Surface (upright, above coin, mid-travel switch)
+-- Flat pose / under-map paths were dragging into void and missing coins.
+-- There is NO client API to "see" Invalid position anticheat before a kick.
+-- Safety = no teleport + moderate speed + your CD (set to 2 if you want).
+local function moveFastUnder(root, hum, target, speed)
+    if hum then hum.AutoRotate = true end
+    setNoclip(NOCLIP)
+    -- reuse proven surface mover (retargets if coin is taken mid-path)
+    return moveSurface(root, target, speed)
+end
+
+local function getPing()
+    local ok, ping = pcall(function()
+        return game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+    end)
+    return ok and ping or 0
+end
+
+local TP_IF_FAR = 220
+local TP_COOLDOWN = 8
+local lastTpTick = 0
+
+-- Go to coin; supports mid-travel retarget. Returns true if collected attempt done.
+local function goToCoin(root, hum, coin, speed)
+    if not root or not coin then return false end
+    local current = coin
+    local hops = 0
+    while current and hops < 8 do
+        hops = hops + 1
+        if not coinStillValid(current) then
+            VS[current] = true
+            current = findBetterCoin(root, nil, math.huge)
+            if not current then return false end
+        end
+        root.Anchored = false
+        if hum then
+            hum.PlatformStand = false
+            hum.Sit = false
+        end
+        root.AssemblyLinearVelocity = Vector3.zero
+        moveToken = moveToken + 1
+        local reached, newT
+        if FARM_MODE == "FastUnder" then
+            reached, newT = moveFastUnder(root, hum, current, speed)
+        elseif FARM_MODE == "Flat" then
+            if hum then hum.AutoRotate = false end
+            setNoclip(true)
+            reached, newT = moveFlat(root, current, speed)
+        else
+            if hum then hum.AutoRotate = true end
+            setNoclip(NOCLIP)
+            reached, newT = moveSurface(root, current, speed)
+        end
+        if newT and newT ~= current then
+            current = newT
+        elseif reached then
+            local tWait = tick()
+            while tick() - tWait < 0.8 do
+                if not (root and root.Parent) then break end
+                if not current.Parent then break end
+
+                -- Move the character root into the coin's position so the
+                -- normal touch collision can occur; don't mark it collected
+                -- merely because we reached the destination.
+                if FARM_MODE == "Flat" then
+                    root.CFrame = CFrame.new(current.Position) * FLAT
+                else
+                    root.CFrame = CFrame.new(current.Position)
+                end
+
+                touchCoin(current, root)
+                task.wait(0.05)
+            end
+
+            if not current.Parent then
+                VS[current] = true
+                return true
+            end
+
+            -- If the coin is still present, leave it eligible for a retry.
+            return false
+        else
+            return false
+        end
+    end
+    return false
+end
+
+local function pickTarget(candidates)
+    if #candidates == 0 then return nil end
+    table.sort(candidates, function(a, b) return a.dist < b.dist end)
+    if COIN_MODE == "Closest" then
+        return candidates[1].obj
+    end
+    -- Spread: distance + per-account hash (not pure random closest-5)
+    return spreadPick(candidates)
+end
+
+
+-- (GUI)
+-- =========================================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "mm2FarmLight"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Enabled = true
+gui.Parent = pg
+gui.Enabled = true
+print("[mm2 coins farm] Farm interface created and enabled under PlayerGui.")
+
+local main = Instance.new("Frame")
+main.Size = UDim2.fromOffset(420, 520)
+main.Position = UDim2.new(0.5, -210, 0.08, 0)
+main.BackgroundColor3 = Color3.fromRGB(14, 7, 4)
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 2.4
+stroke.Color = Color3.fromRGB(255, 120, 30)
+stroke.Parent = main
+
+task.spawn(function()
+    local t = 0
+    while main.Parent do
+        t = t + task.wait(0.03)
+        local p = (math.sin(t * 2.2) + 1) / 2
+        stroke.Color = Color3.fromRGB(180 + p * 75, 60 + p * 60, 10 + p * 20)
+        stroke.Thickness = 2 + p * 1.2
+    end
+end)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -90, 0, 34)
+title.Position = UDim2.new(0, 12, 0, 6)
+title.BackgroundTransparency = 1
+title.Text = "mm2 coins farm"
+title.TextColor3 = Color3.fromRGB(255, 150, 50)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
+
+local placeTag = Instance.new("TextLabel")
+placeTag.Size = UDim2.fromOffset(70, 22)
+placeTag.Position = UDim2.new(1, -110, 0, 10)
+placeTag.BackgroundTransparency = 1
+placeTag.Font = Enum.Font.GothamBold
+placeTag.TextSize = 12
+placeTag.Parent = main
+if isHidden then
+    placeTag.Text = "HIDDEN"
+    placeTag.TextColor3 = Color3.fromRGB(40, 255, 90)
+else
+    placeTag.Text = "ORIGINAL"
+    placeTag.TextColor3 = Color3.fromRGB(255, 50, 50)
+end
+
+local close = Instance.new("TextButton")
+close.Size = UDim2.fromOffset(28, 28)
+close.Position = UDim2.new(1, -36, 0, 8)
+close.BackgroundColor3 = Color3.fromRGB(170, 45, 20)
+close.Text = "X"
+close.TextColor3 = Color3.new(1,1,1)
+close.Font = Enum.Font.GothamBold
+close.TextSize = 14
+close.Parent = main
+Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
+close.MouseButton1Click:Connect(function() gui:Destroy() end)
+
+local side = Instance.new("Frame")
+side.Size = UDim2.new(0, 105, 1, -50)
+side.Position = UDim2.new(0, 8, 0, 44)
+side.BackgroundColor3 = Color3.fromRGB(26, 12, 6)
+side.Parent = main
+Instance.new("UICorner", side).CornerRadius = UDim.new(0, 8)
+
+local content = Instance.new("ScrollingFrame")
+content.Size = UDim2.new(1, -125, 1, -54)
+content.Position = UDim2.new(0, 120, 0, 44)
+content.BackgroundColor3 = Color3.fromRGB(18, 9, 5)
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 3
+content.CanvasSize = UDim2.new(0, 0, 0, 900)
+content.Parent = main
+Instance.new("UICorner", content).CornerRadius = UDim.new(0, 8)
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 6)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = content
+
+local function clear()
+    for _, c in ipairs(content:GetChildren()) do
+        if not c:IsA("UIListLayout") then c:Destroy() end
+    end
+end
+
+local function mkBtn(txt, y, parent)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -12, 0, 32)
+    b.Position = UDim2.new(0, 6, 0, y)
+    b.BackgroundColor3 = Color3.fromRGB(48, 22, 8)
+    b.Text = txt
+    b.TextColor3 = Color3.fromRGB(255, 200, 140)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.Parent = parent
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    return b
+end
+
+local function mkToggle(txt, parent, state, cb)
+    local st = state
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, -16, 0, 32)
+    b.BackgroundColor3 = st and Color3.fromRGB(170, 75, 20) or Color3.fromRGB(38, 16, 8)
+    b.Text = txt .. (st and " : ON" or " : OFF")
+    b.TextColor3 = Color3.new(1,1,1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.Parent = parent
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.MouseButton1Click:Connect(function()
+        st = not st
+        b.Text = txt .. (st and " : ON" or " : OFF")
+        b.BackgroundColor3 = st and Color3.fromRGB(170, 75, 20) or Color3.fromRGB(38, 16, 8)
+        cb(st)
+    end)
+    return b
+end
+
+local function showAF()
+    clear()
+    content.CanvasSize = UDim2.new(0, 0, 0, 1050)
+    pcall(function() content.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+
+    mkToggle("AutoFarm", content, AF, function(v)
+        AF = v
+        if v then
+            CL = 0
+            VS = {}
+            restoreMovement()
+            local n = rebuildCoinCache()
+            print("[Farm] AutoFarm ON | coins found:", n)
+        else
+            restoreMovement()
+            print("[Farm] AutoFarm OFF - movement restored")
+        end
+    end).LayoutOrder = 1
+
+    mkToggle("Anti AFK", content, AK, function(v) AK = v end).LayoutOrder = 2
+    mkToggle("Reset on Full", content, RF, function(v) RF = v end).LayoutOrder = 3
+    mkToggle("Performance", content, PM, function(v) if v then epm() end end).LayoutOrder = 4
+    mkToggle("Noclip", content, NOCLIP, function(v) NOCLIP = v setNoclip(v) end).LayoutOrder = 5
+    mkToggle("No Render", content, NORENDER, function(v) setNoRender(v) end).LayoutOrder = 6
+
+    local modeLbl = Instance.new("TextLabel")
+    modeLbl.Size = UDim2.new(1, -16, 0, 18)
+    modeLbl.BackgroundTransparency = 1
+    modeLbl.Text = "Farm Mode: " .. tostring(FARM_MODE)
+    modeLbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    modeLbl.Font = Enum.Font.Gotham
+    modeLbl.TextSize = 12
+    modeLbl.LayoutOrder = 7
+    modeLbl.Parent = content
+
+    local modeRow = Instance.new("Frame")
+    modeRow.Size = UDim2.new(1, -16, 0, 34)
+    modeRow.BackgroundTransparency = 1
+    modeRow.LayoutOrder = 8
+    modeRow.Parent = content
+    local modeLay = Instance.new("UIListLayout")
+    modeLay.FillDirection = Enum.FillDirection.Horizontal
+    modeLay.Padding = UDim.new(0, 6)
+    modeLay.Parent = modeRow
+
+    local function styleModeBtn(b, on)
+        b.BackgroundColor3 = on and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+    end
+    local function makeModeBtn(name, label)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(0.33, -4, 1, 0)
+        b.Text = label
+        b.TextColor3 = Color3.new(1,1,1)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 11
+        b.Parent = modeRow
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        styleModeBtn(b, FARM_MODE == name)
+        b.MouseButton1Click:Connect(function()
+            FARM_MODE = name
+            modeLbl.Text = "Farm Mode: " .. name
+            for _, c in ipairs(modeRow:GetChildren()) do
+                if c:IsA("TextButton") then
+                    styleModeBtn(c, c.Text == label)
+                end
+            end
+            if name == "Surface" then restoreMovement() end
+            moveToken = moveToken + 1
+        end)
+        return b
+    end
+    makeModeBtn("Surface", "Surface")
+    makeModeBtn("Flat", "Flat")
+    makeModeBtn("FastUnder", "Fast")
+
+
+    -- الخيار الجديد
+    mkToggle("Player Noclip", content, PLAYER_NOCLIP, function(v)
+        setPlayerNoclip(v)
+    end).LayoutOrder = 8
+
+    local coinLbl = Instance.new("TextLabel")
+    coinLbl.Size = UDim2.new(1, -16, 0, 18)
+    coinLbl.BackgroundTransparency = 1
+    coinLbl.Text = "Coin Mode: " .. COIN_MODE
+    coinLbl.TextColor3 = Color3.fromRGB(255, 180, 100)
+    coinLbl.Font = Enum.Font.GothamBold
+    coinLbl.TextSize = 12
+    coinLbl.LayoutOrder = 9
+    coinLbl.Parent = content
+
+    for i, m in ipairs({"Closest", "Spread"}) do
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1, -16, 0, 28)
+        b.BackgroundColor3 = (COIN_MODE == m) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+        b.Text = m
+        b.TextColor3 = Color3.new(1,1,1)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 12
+        b.LayoutOrder = 9 + i
+        b.Parent = content
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+        b.MouseButton1Click:Connect(function()
+            COIN_MODE = m
+            coinLbl.Text = "Coin Mode: " .. COIN_MODE
+            for _, c in ipairs(content:GetChildren()) do
+                if c:IsA("TextButton") and (c.Text == "Closest" or c.Text == "Spread") then
+                    c.BackgroundColor3 = (c.Text == COIN_MODE) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+                end
+            end
+        end)
+    end
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -16, 0, 18)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "Speed: " .. SP
+    lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.LayoutOrder = 12
+    lbl.Parent = content
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -16, 0, 28)
+    box.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    box.Text = tostring(SP)
+    box.TextColor3 = Color3.new(1,1,1)
+    box.Font = Enum.Font.GothamBold
+    box.TextSize = 13
+    box.LayoutOrder = 13
+    box.Parent = content
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+    box.ClearTextOnFocus = false
+    local function commitSpeed()
+        local n = tonumber(box.Text)
+        if n then
+            SP = math.clamp(n, 1, 100)
+            lbl.Text = "Speed: " .. SP
+        end
+    end
+    box.FocusLost:Connect(function()
+        commitSpeed()
+        box.Text = tostring(SP)
+    end)
+    box:GetPropertyChangedSignal("Text"):Connect(function()
+        local n = tonumber(box.Text)
+        if n then
+            SP = math.clamp(n, 1, 100)
+            lbl.Text = "Speed: " .. SP
+        end
+    end)
+
+    local delayLbl = Instance.new("TextLabel")
+    delayLbl.Size = UDim2.new(1, -16, 0, 18)
+    delayLbl.BackgroundTransparency = 1
+    delayLbl.Text = "Coin Delay: " .. COIN_DELAY .. "s"
+    delayLbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    delayLbl.Font = Enum.Font.Gotham
+    delayLbl.TextSize = 12
+    delayLbl.LayoutOrder = 14
+    delayLbl.Parent = content
+
+    local delayBox = Instance.new("TextBox")
+    delayBox.Size = UDim2.new(1, -16, 0, 28)
+    delayBox.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    delayBox.Text = tostring(COIN_DELAY)
+    delayBox.TextColor3 = Color3.new(1,1,1)
+    delayBox.Font = Enum.Font.GothamBold
+    delayBox.TextSize = 13
+    delayBox.LayoutOrder = 15
+    delayBox.Parent = content
+    Instance.new("UICorner", delayBox).CornerRadius = UDim.new(0, 5)
+    delayBox.ClearTextOnFocus = false
+    delayBox.FocusLost:Connect(function()
+        local n = tonumber(delayBox.Text)
+        if n then
+            COIN_DELAY = math.clamp(n, 0.05, 5)
+            delayLbl.Text = "Coin Delay: " .. COIN_DELAY .. "s"
+        end
+        delayBox.Text = tostring(COIN_DELAY)
+    end)
+    delayBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local n = tonumber(delayBox.Text)
+        if n then
+            COIN_DELAY = math.clamp(n, 0.05, 5)
+            delayLbl.Text = "Coin Delay: " .. COIN_DELAY .. "s"
+        end
+    end)
+
+    local cnt = Instance.new("TextLabel")
+    cnt.Size = UDim2.new(1, -16, 0, 20)
+    cnt.BackgroundTransparency = 1
+    cnt.Text = "Collected: 0"
+    cnt.TextColor3 = Color3.fromRGB(255, 190, 100)
+    cnt.Font = Enum.Font.Gotham
+    cnt.TextSize = 12
+    cnt.LayoutOrder = 16
+    cnt.Parent = content
+    task.spawn(function()
+        while cnt.Parent do
+            cnt.Text = "Collected: " .. CL
+            task.wait(0.5)
+        end
+    end)
+
+    local decalBtn = Instance.new("TextButton")
+    decalBtn.Size = UDim2.new(1, -16, 0, 34)
+    decalBtn.BackgroundColor3 = Color3.fromRGB(90, 50, 30)
+    decalBtn.Text = "Delete All Decals"
+    decalBtn.TextColor3 = Color3.new(1,1,1)
+    decalBtn.Font = Enum.Font.GothamBold
+    decalBtn.TextSize = 12
+    decalBtn.LayoutOrder = 17
+    decalBtn.Parent = content
+    Instance.new("UICorner", decalBtn).CornerRadius = UDim.new(0, 6)
+    decalBtn.MouseButton1Click:Connect(function()
+        removeAllDecals()
+        decalBtn.Text = "Done!"
+        task.delay(1.5, function()
+            if decalBtn and decalBtn.Parent then decalBtn.Text = "Delete All Decals" end
+        end)
+    end)
+
+    local jobBtn = Instance.new("TextButton")
+    jobBtn.Size = UDim2.new(1, -16, 0, 34)
+    jobBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 160)
+    jobBtn.Text = "Copy JobId (Delta)"
+    jobBtn.TextColor3 = Color3.new(1,1,1)
+    jobBtn.Font = Enum.Font.GothamBold
+    jobBtn.TextSize = 12
+    jobBtn.LayoutOrder = 18
+    jobBtn.Parent = content
+    Instance.new("UICorner", jobBtn).CornerRadius = UDim.new(0, 6)
+    jobBtn.MouseButton1Click:Connect(function()
+        copyJoinCode()
+        jobBtn.Text = "Copied!"
+        task.delay(1.5, function()
+            if jobBtn and jobBtn.Parent then jobBtn.Text = "Copy JobId (Delta)" end
+        end)
+    end)
+end
+
+local function showServers()
+    clear()
+    content.CanvasSize = UDim2.new(0, 0, 0, 160)
+
+    local hopBtn = Instance.new("TextButton")
+    hopBtn.Size = UDim2.new(1, -16, 0, 40)
+    hopBtn.BackgroundColor3 = Color3.fromRGB(30, 120, 50)
+    hopBtn.Text = "Low Player Server"
+    hopBtn.TextColor3 = Color3.new(1,1,1)
+    hopBtn.Font = Enum.Font.GothamBold
+    hopBtn.TextSize = 13
+    hopBtn.LayoutOrder = 1
+    hopBtn.Parent = content
+    Instance.new("UICorner", hopBtn).CornerRadius = UDim.new(0, 6)
+    hopBtn.MouseButton1Click:Connect(function()
+        hopBtn.Text = "Searching..."
+        task.spawn(function()
+            hopLowServer()
+            task.wait(2)
+            if hopBtn and hopBtn.Parent then hopBtn.Text = "Low Player Server" end
+        end)
+    end)
+
+    local tpBtn = Instance.new("TextButton")
+    tpBtn.Size = UDim2.new(1, -16, 0, 40)
+    tpBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 15)
+    tpBtn.Text = "TP Secret Place"
+    tpBtn.TextColor3 = Color3.new(1,1,1)
+    tpBtn.Font = Enum.Font.GothamBold
+    tpBtn.TextSize = 13
+    tpBtn.LayoutOrder = 2
+    tpBtn.Parent = content
+    Instance.new("UICorner", tpBtn).CornerRadius = UDim.new(0, 6)
+    tpBtn.MouseButton1Click:Connect(function()
+        pcall(function() TeleportService:Teleport(HIDDEN_ID, lp) end)
+    end)
+end
+
+local function showMove()
+    clear()
+    content.CanvasSize = UDim2.new(0, 0, 0, 220)
+    mkToggle("Inf Jump", content, IJ, function(v) IJ = v end).LayoutOrder = 1
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -16, 0, 18)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = "JumpPower: " .. JP
+    lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.LayoutOrder = 2
+    lbl.Parent = content
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -16, 0, 28)
+    box.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    box.Text = tostring(JP)
+    box.TextColor3 = Color3.new(1,1,1)
+    box.Font = Enum.Font.GothamBold
+    box.TextSize = 13
+    box.LayoutOrder = 3
+    box.Parent = content
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+    box.FocusLost:Connect(function(e)
+        if e then
+            local n = tonumber(box.Text)
+            JP = n and math.clamp(n, 10, 300) or JP
+            box.Text = tostring(JP)
+            lbl.Text = "JumpPower: " .. JP
+            if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+                lp.Character.Humanoid.JumpPower = JP
+            end
+        end
+    end)
+end
+
+local function showModes()
+    clear()
+    content.CanvasSize = UDim2.new(0, 0, 0, 380)
+    pcall(function() content.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+
+    local hdr = Instance.new("TextLabel")
+    hdr.Size = UDim2.new(1, -16, 0, 36)
+    hdr.BackgroundTransparency = 1
+    hdr.Text = "Farm Modes\nCurrent: " .. tostring(FARM_MODE)
+    hdr.TextColor3 = Color3.fromRGB(255, 180, 100)
+    hdr.Font = Enum.Font.GothamBold
+    hdr.TextSize = 12
+    hdr.TextYAlignment = Enum.TextYAlignment.Top
+    hdr.LayoutOrder = 1
+    hdr.Parent = content
+
+    local modes = {
+        {"FlatUnder", "Flat on coin (lying down, not underground)"},
+        {"Surface", "Walk above coin"},
+        {"Tween", "Smooth tween to coin"},
+        {"TPTouch", "Fast teleport + touch"},
+        {"Random", "Random coin + surface"},
+    }
+    for i, m in ipairs(modes) do
+        local name, desc = m[1], m[2]
+        local b = Instance.new("TextButton")
+        b.Name = "Mode_" .. name
+        b.Size = UDim2.new(1, -16, 0, 44)
+        b.BackgroundColor3 = (FARM_MODE == name) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+        b.Text = name .. "  -  " .. desc
+        b.TextColor3 = Color3.new(1, 1, 1)
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 11
+        b.LayoutOrder = 1 + i
+        b.Parent = content
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+        b.MouseButton1Click:Connect(function()
+            FARM_MODE = name
+            hdr.Text = "Farm Modes\nCurrent: " .. name
+            for _, c in ipairs(content:GetChildren()) do
+                if c:IsA("TextButton") and string.sub(c.Name, 1, 5) == "Mode_" then
+                    local on = (c.Name == "Mode_" .. name)
+                    c.BackgroundColor3 = on and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+                end
+            end
+        end)
+    end
+end
+
+local tabs = {
+    {name = "AutoFarm", fn = showAF},
+    {name = "Servers", fn = showServers}
+}
+
+for i, tab in ipairs(tabs) do
+    local b = mkBtn(tab.name, (i-1)*38 + 8, side)
+    b.MouseButton1Click:Connect(function()
+        for _, c in ipairs(side:GetChildren()) do
+            if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(48, 22, 8) end
+        end
+        b.BackgroundColor3 = Color3.fromRGB(190, 85, 25)
+        tab.fn()
+    end)
+end
+
+showAF()
+local first = side:FindFirstChildOfClass("TextButton")
+if first then first.BackgroundColor3 = Color3.fromRGB(190, 85, 25) end
+
+UIS.JumpRequest:Connect(function()
+    if IJ and lp.Character and lp.Character:FindFirstChild("Humanoid") then
+        lp.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+lp.CharacterAdded:Connect(function(ch)
+    task.wait(0.3)
+    local hum = ch:FindFirstChild("Humanoid")
+    if hum then hum.JumpPower = JP end
+    VS = {}
+    restoreMovement()
+    if NOCLIP then setNoclip(true) end
+    if PLAYER_NOCLIP then
+        applyPlayerNoclipToChar(ch)
+    end
+end)
+
+local coinRemote = RPS:FindFirstChild("Remotes")
+if coinRemote then
+    coinRemote = coinRemote:FindFirstChild("Gameplay")
+    if coinRemote then coinRemote = coinRemote:FindFirstChild("CoinCollected") end
+end
+if coinRemote then
+    coinRemote.OnClientEvent:Connect(function(_, cur, max)
+        if typeof(cur) == "number" then realCoins = cur end
+        if typeof(max) == "number" then realMax = max end
+        if cur and max and cur >= max then
+            print("[Farm] Bag full:", cur, "/", max)
+            task.wait(0.4)
+            if RF and lp.Character then
+                lp.Character:BreakJoints()
+            end
+        end
+    end)
+end
+
+-- =========================================================
+
+task.spawn(function()
+    local lastClear = tick()
+    local lastStatus = 0
+    while true do
+        local loopOk, loopErr = pcall(function()
+        if not AF then
+            restoreMovement()
+            task.wait(0.4)
+        else
+            local ch = lp.Character
+            local root = ch and ch:FindFirstChild("HumanoidRootPart")
+            local hum = ch and ch:FindFirstChild("Humanoid")
+            if not (root and hum and hum.Health > 0) then
+                task.wait(0.3)
+            else
+                if tick() - lastClear > 20 then
+                    VS = {}
+                    lastClear = tick()
+                end
+                rebuildCoinCache()
+                local allCoins = getCoins()
+                if #allCoins == 0 then
+                    task.wait(0.3)
+                else
+                    local candidates = {}
+                    for _, obj in ipairs(allCoins) do
+                        if coinStillValid(obj) then
+                            local d = (obj.Position - root.Position).Magnitude
+                            if d < RG then
+                                table.insert(candidates, {obj = obj, dist = d})
+                            end
+                        end
+                    end
+                    local target = nil
+                    if #candidates > 0 then
+                        target = pickTarget(candidates)
+                    end
+                    if not target then
+                        -- pick any live coin and go (may TP if far)
+                        for _, obj in ipairs(allCoins) do
+                            if coinStillValid(obj) then
+                                target = obj
+                                break
+                            end
+                        end
+                    end
+                    if target then
+                        local ok = goToCoin(root, hum, target, SP)
+                        if ok then
+                            CL = CL + 1
+                            lastCollectTick = tick()
+                        end
+                        task.wait(COIN_DELAY)
+                    else
+                        task.wait(0.25)
+                    end
+                end
+            end
+        end
+        end)
+
+        if not loopOk then
+            warn("[Farm] Loop error:", loopErr)
+            task.wait(0.5)
+        elseif tick() - lastStatus > 10 then
+            lastStatus = tick()
+            local count = 0
+            pcall(function() count = #getCoins() end)
+            print("[Farm] Running | AF=" .. tostring(AF) .. " | visible coins=" .. tostring(count))
+        end
+    end
+end)
+
+
+-- Noclip only when toggle is ON (not forced by AutoFarm)
+RS.Stepped:Connect(function()
+    if NOCLIP or (AF and FARM_MODE == "Flat") then
+        setNoclip(true)
+    end
+end)
+
+-- Ensure movement works right after execute
+task.defer(function()
+    task.wait(0.2)
+    restoreMovement()
+end)
+
+lp.Idled:Connect(function()
+    if AK then
+        VU:Button2Down(Vector2.new(), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VU:Button2Up(Vector2.new(), workspace.CurrentCamera.CFrame)
+    end
+end)
+
+
+-- =========================================================
+-- (AUTO START + PLAYER-COUNT HOP + DEAD SERVER DETECT)
+-- Kick auto-rejoin cannot run after a kick (script dies).
+-- Put this file in your executor AUTOEXEC folder so it runs
+-- again when you rejoin. Optional-on-teleport helps for hops only.
+-- =========================================================
+
+-- Persist farm across intentional teleports (server hop)
+pcall(function()
+    if queue_on_teleport then
+        local src = [=[
+            task.spawn(function()
+                task.wait(3)
+                pcall(function()
+                    loadstring(game:HttpGet("https://raw.githubusercontent.com/bt-y/677skibidi/refs/heads/main/mmmmmmmmhmm"))()
+                end)
+            end)
+        ]=]
+        -- If you do not use that URL, leave autoexec instead; this is optional.
+        -- queue_on_teleport(src)
+    end
+end)
+
+-- Auto-start Surface farm once the character is ready.
+task.spawn(function()
+    local ready = false
+
+    for _ = 1, 120 do
+        local ch = lp.Character
+        local root = ch and ch:FindFirstChild("HumanoidRootPart")
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+
+        if root and hum and hum.Health > 0 then
+            ready = true
+            break
+        end
+
+        task.wait(0.5)
+    end
+
+    AF = true
+    FARM_MODE = "Surface"
+    SP = 22
+    COIN_DELAY = 0.5
+    lastCollectTick = tick()
+
+    if ready then
+        rebuildCoinCache()
+        print("[mm2 coins farm] AutoFarm started: Surface | Speed 22.")
+    else
+        warn("[mm2 coins farm] AutoFarm enabled, but character was not ready yet; it will start when your character loads.")
+    end
+end)
+
+-- Every minute: if too many players, hop to a smaller server
+task.spawn(function()
+    task.wait(15)
+    while true do
+        task.wait(AUTO_HOP_EVERY)
+        if not AF then
+            -- still hop if crowded even when farm off
+        end
+        local count = #P:GetPlayers()
+        if count > AUTO_HOP_PLAYERS then
+            if tick() - lastHopAttempt > 45 then
+                lastHopAttempt = tick()
+                print("[AutoHop] Players:", count, "> ", AUTO_HOP_PLAYERS, " hopping...")
+                pcall(hopLowServer)
+            end
+        end
+    end
+end)
+
+-- Dead / bugged server: farm on, no coin collect for a long time while coins may exist or map never starts
+task.spawn(function()
+    task.wait(30)
+    while true do
+        task.wait(20)
+        if not AF then
+            lastCollectTick = tick()
+        else
+            local idle = tick() - lastCollectTick
+            local coinN = 0
+            pcall(function()
+                coinN = #getCoins()
+            end)
+            -- stuck forever with no collects
+            if idle > DEAD_SERVER_SEC then
+                if tick() - lastHopAttempt > 45 then
+                    lastHopAttempt = tick()
+                    print("[DeadServer] No collect for", math.floor(idle), "s | coins cache:", coinN, " hopping")
+                    VS = {}
+                    pcall(hopLowServer)
+                end
+            end
+        end
+    end
+end)
+
+print("[mm2 coins farm] AutoFarm ON | Surface | SP=22 | CD=0.5 | hop if >8 players")
