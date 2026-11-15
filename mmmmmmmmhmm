@@ -18,58 +18,14 @@ local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
 -- =========================================================
--- (REMOVE ONLY IDENTIFIABLE LOADING UI - KEEP GAME + FARM GUI)
+-- (LOADING SCREEN)
 -- =========================================================
+-- Do not scan, disable, or destroy ScreenGuis here. Earlier versions
+-- hid the entire PlayerGui, which also hid this script's own interface.
+-- Only ask Roblox to dismiss its built-in loading screen.
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
-
 pcall(function()
     ReplicatedFirst:RemoveDefaultLoadingScreen()
-end)
-
--- Do NOT disable every ScreenGui: that hides the MM2 HUD and can
--- interfere with the game's normal UI. Only remove objects clearly
--- named as loading UI. Never touch this script's own farm interface.
-local function removeNamedLoadingUi(container)
-    if not container then return end
-
-    for _, obj in ipairs(container:GetDescendants()) do
-        local lowerName = string.lower(obj.Name)
-        local isLoadingName = string.find(lowerName, "loading", 1, true) ~= nil
-        local isFarmGui = obj.Name == "mm2FarmLight"
-
-        if isLoadingName and not isFarmGui
-            and (obj:IsA("ScreenGui") or obj:IsA("GuiObject")) then
-            pcall(function()
-                obj:Destroy()
-            end)
-        end
-    end
-end
-
-local function clearNamedLoadingUi()
-    removeNamedLoadingUi(pg)
-    removeNamedLoadingUi(ReplicatedFirst)
-end
-
-clearNamedLoadingUi()
-
-pg.DescendantAdded:Connect(function(obj)
-    if obj.Name ~= "mm2FarmLight"
-        and string.find(string.lower(obj.Name), "loading", 1, true)
-        and (obj:IsA("ScreenGui") or obj:IsA("GuiObject")) then
-        task.defer(clearNamedLoadingUi)
-    end
-end)
-
-ReplicatedFirst.DescendantAdded:Connect(function()
-    task.defer(clearNamedLoadingUi)
-end)
-
-task.spawn(function()
-    for _ = 1, 120 do
-        clearNamedLoadingUi()
-        task.wait(0.5)
-    end
 end)
 
 -- Farm-only build: no dual-load, no transfer, no ESP
@@ -94,3 +50,47 @@ local function httpGet(url)
     end)
     if ok and res and res.Body then return res.Body end
     return nil
+end
+
+local function findLowServer(placeId, maxPlayers)
+    maxPlayers = maxPlayers or 3
+    local myJob = tostring(game.JobId)
+    local bestId, bestCount = nil, 999
+    local cursor = ""
+    local pages = 0
+
+    -- Scan up to 5 pages (500 servers) and pick the real lowest
+    while pages < 5 do
+        pages = pages + 1
+        local url = "https://games.roblox.com/v1/games/" .. tostring(placeId)
+            .. "/servers/Public?sortOrder=Asc&limit=100"
+        if cursor ~= "" then
+            url = url .. "&cursor=" .. cursor
+        end
+
+        local body = httpGet(url)
+        if not body then break end
+
+        local ok, data = pcall(function()
+            return HS:JSONDecode(body)
+        end)
+        if not ok or not data or not data.data then break end
+
+        for _, server in ipairs(data.data) do
+            local playing = tonumber(server.playing) or 0
+            local id = server.id
+            if id and tostring(id) ~= myJob and playing < bestCount then
+                bestCount = playing
+                bestId = id
+            end
+            -- Instant accept if 0-2 players
+            if id and tostring(id) ~= myJob and playing >= 0 and playing <= maxPlayers then
+                if playing < bestCount then
+                    bestCount = playing
+                    bestId = id
+                end
+            end
+        end
+
+        -- Found a good low server, stop early
+        if bestId and bestCount <= maxPlayers then
