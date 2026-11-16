@@ -691,15 +691,17 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "mm2FarmLight"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999999
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Enabled = true
 gui.Parent = pg
-gui.Enabled = true
 print("[mm2 coins farm] Farm interface created and enabled under PlayerGui.")
 
 local main = Instance.new("Frame")
+main.Name = "MainPanel"
 main.Size = UDim2.fromOffset(420, 520)
 main.Position = UDim2.new(0.5, -210, 0.08, 0)
-main.BackgroundColor3 = Color3.fromRGB(14, 7, 4)
+main.BackgroundColor3 = Color3.fromRGB(12, 10, 28)
 main.Active = true
 main.Draggable = true
 main.Parent = gui
@@ -707,16 +709,22 @@ Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
 
 local stroke = Instance.new("UIStroke")
 stroke.Thickness = 2.4
-stroke.Color = Color3.fromRGB(255, 120, 30)
+stroke.Color = Color3.fromRGB(120, 90, 255)
 stroke.Parent = main
 
+-- Soft blue <-> purple pulse on border
 task.spawn(function()
     local t = 0
     while main.Parent do
-        t = t + task.wait(0.03)
-        local p = (math.sin(t * 2.2) + 1) / 2
-        stroke.Color = Color3.fromRGB(180 + p * 75, 60 + p * 60, 10 + p * 20)
-        stroke.Thickness = 2 + p * 1.2
+        t = t + task.wait(0.04)
+        local p = (math.sin(t * 1.6) + 1) / 2
+        -- blue (70,120,255) -> purple (160,70,255)
+        stroke.Color = Color3.fromRGB(
+            math.floor(70 + p * 90),
+            math.floor(120 - p * 50),
+            255
+        )
+        stroke.Thickness = 2 + p * 1.1
     end
 end)
 
@@ -724,8 +732,8 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.16-cd"
-title.TextColor3 = Color3.fromRGB(255, 150, 50)
+title.Text = "mm2 coins farm | v2026.11.16-blue"
+title.TextColor3 = Color3.fromRGB(180, 160, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
 title.TextXAlignment = Enum.TextXAlignment.Left
@@ -740,35 +748,79 @@ placeTag.TextSize = 12
 placeTag.Parent = main
 if isHidden then
     placeTag.Text = "HIDDEN"
-    placeTag.TextColor3 = Color3.fromRGB(40, 255, 90)
+    placeTag.TextColor3 = Color3.fromRGB(80, 255, 180)
 else
     placeTag.Text = "ORIGINAL"
-    placeTag.TextColor3 = Color3.fromRGB(255, 50, 50)
+    placeTag.TextColor3 = Color3.fromRGB(255, 90, 120)
 end
 
 local close = Instance.new("TextButton")
 close.Size = UDim2.fromOffset(28, 28)
 close.Position = UDim2.new(1, -36, 0, 8)
-close.BackgroundColor3 = Color3.fromRGB(170, 45, 20)
+close.BackgroundColor3 = Color3.fromRGB(90, 40, 140)
 close.Text = "X"
 close.TextColor3 = Color3.new(1,1,1)
 close.Font = Enum.Font.GothamBold
 close.TextSize = 14
 close.Parent = main
 Instance.new("UICorner", close).CornerRadius = UDim.new(0, 6)
-close.MouseButton1Click:Connect(function() gui:Destroy() end)
+-- X only hides main panel (keeps floating toggle + farm running)
+close.MouseButton1Click:Connect(function()
+    main.Visible = false
+end)
+
+-- Floating movable hide / show button (always on top)
+local hideBtn = Instance.new("TextButton")
+hideBtn.Name = "HideToggle"
+hideBtn.Size = UDim2.fromOffset(52, 52)
+hideBtn.Position = UDim2.new(0.5, -26, 0, 8)
+hideBtn.BackgroundColor3 = Color3.fromRGB(70, 50, 180)
+hideBtn.Text = "GUI"
+hideBtn.TextColor3 = Color3.new(1,1,1)
+hideBtn.Font = Enum.Font.GothamBold
+hideBtn.TextSize = 14
+hideBtn.ZIndex = 50
+hideBtn.Active = true
+hideBtn.Draggable = true
+hideBtn.Parent = gui
+Instance.new("UICorner", hideBtn).CornerRadius = UDim.new(1, 0)
+local hideStroke = Instance.new("UIStroke")
+hideStroke.Color = Color3.fromRGB(140, 120, 255)
+hideStroke.Thickness = 2
+hideStroke.Parent = hideBtn
+task.spawn(function()
+    local t = 0
+    while hideBtn.Parent do
+        t = t + task.wait(0.05)
+        local p = (math.sin(t * 1.8) + 1) / 2
+        hideBtn.BackgroundColor3 = Color3.fromRGB(
+            math.floor(55 + p * 40),
+            math.floor(40 + p * 30),
+            math.floor(160 + p * 60)
+        )
+        hideStroke.Color = Color3.fromRGB(
+            math.floor(100 + p * 80),
+            math.floor(90 + p * 40),
+            255
+        )
+    end
+end)
+hideBtn.MouseButton1Click:Connect(function()
+    main.Visible = not main.Visible
+    hideBtn.Text = main.Visible and "GUI" or "SHOW"
+end)
 
 local side = Instance.new("Frame")
 side.Size = UDim2.new(0, 105, 1, -50)
 side.Position = UDim2.new(0, 8, 0, 44)
-side.BackgroundColor3 = Color3.fromRGB(26, 12, 6)
+side.BackgroundColor3 = Color3.fromRGB(18, 14, 40)
 side.Parent = main
 Instance.new("UICorner", side).CornerRadius = UDim.new(0, 8)
 
 local content = Instance.new("ScrollingFrame")
 content.Size = UDim2.new(1, -125, 1, -54)
 content.Position = UDim2.new(0, 120, 0, 44)
-content.BackgroundColor3 = Color3.fromRGB(18, 9, 5)
+content.BackgroundColor3 = Color3.fromRGB(14, 12, 32)
 content.BorderSizePixel = 0
 content.ScrollBarThickness = 3
 content.CanvasSize = UDim2.new(0, 0, 0, 900)
@@ -790,9 +842,9 @@ local function mkBtn(txt, y, parent)
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(1, -12, 0, 32)
     b.Position = UDim2.new(0, 6, 0, y)
-    b.BackgroundColor3 = Color3.fromRGB(48, 22, 8)
+    b.BackgroundColor3 = Color3.fromRGB(40, 32, 80)
     b.Text = txt
-    b.TextColor3 = Color3.fromRGB(255, 200, 140)
+    b.TextColor3 = Color3.fromRGB(200, 190, 255)
     b.Font = Enum.Font.GothamBold
     b.TextSize = 12
     b.Parent = parent
@@ -804,7 +856,7 @@ local function mkToggle(txt, parent, state, cb)
     local st = state
     local b = Instance.new("TextButton")
     b.Size = UDim2.new(1, -16, 0, 32)
-    b.BackgroundColor3 = st and Color3.fromRGB(170, 75, 20) or Color3.fromRGB(38, 16, 8)
+    b.BackgroundColor3 = st and Color3.fromRGB(100, 70, 220) or Color3.fromRGB(28, 22, 55)
     b.Text = txt .. (st and " : ON" or " : OFF")
     b.TextColor3 = Color3.new(1,1,1)
     b.Font = Enum.Font.GothamBold
@@ -814,7 +866,7 @@ local function mkToggle(txt, parent, state, cb)
     b.MouseButton1Click:Connect(function()
         st = not st
         b.Text = txt .. (st and " : ON" or " : OFF")
-        b.BackgroundColor3 = st and Color3.fromRGB(170, 75, 20) or Color3.fromRGB(38, 16, 8)
+        b.BackgroundColor3 = st and Color3.fromRGB(100, 70, 220) or Color3.fromRGB(28, 22, 55)
         cb(st)
     end)
     return b
@@ -849,7 +901,7 @@ local function showAF()
     modeLbl.Size = UDim2.new(1, -16, 0, 18)
     modeLbl.BackgroundTransparency = 1
     modeLbl.Text = "Farm Mode: " .. tostring(FARM_MODE)
-    modeLbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    modeLbl.TextColor3 = Color3.fromRGB(170, 160, 240)
     modeLbl.Font = Enum.Font.Gotham
     modeLbl.TextSize = 12
     modeLbl.LayoutOrder = 7
@@ -866,7 +918,7 @@ local function showAF()
     modeLay.Parent = modeRow
 
     local function styleModeBtn(b, on)
-        b.BackgroundColor3 = on and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+        b.BackgroundColor3 = on and Color3.fromRGB(110, 80, 230) or Color3.fromRGB(28, 22, 55)
     end
     local function makeModeBtn(name, label)
         local b = Instance.new("TextButton")
@@ -905,7 +957,7 @@ local function showAF()
     coinLbl.Size = UDim2.new(1, -16, 0, 18)
     coinLbl.BackgroundTransparency = 1
     coinLbl.Text = "Coin Mode: " .. COIN_MODE
-    coinLbl.TextColor3 = Color3.fromRGB(255, 180, 100)
+    coinLbl.TextColor3 = Color3.fromRGB(180, 160, 255)
     coinLbl.Font = Enum.Font.GothamBold
     coinLbl.TextSize = 12
     coinLbl.LayoutOrder = 9
@@ -914,7 +966,7 @@ local function showAF()
     for i, m in ipairs({"Closest", "Spread"}) do
         local b = Instance.new("TextButton")
         b.Size = UDim2.new(1, -16, 0, 28)
-        b.BackgroundColor3 = (COIN_MODE == m) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+        b.BackgroundColor3 = (COIN_MODE == m) and Color3.fromRGB(110, 80, 230) or Color3.fromRGB(28, 22, 55)
         b.Text = m
         b.TextColor3 = Color3.new(1,1,1)
         b.Font = Enum.Font.GothamBold
@@ -927,7 +979,7 @@ local function showAF()
             coinLbl.Text = "Coin Mode: " .. COIN_MODE
             for _, c in ipairs(content:GetChildren()) do
                 if c:IsA("TextButton") and (c.Text == "Closest" or c.Text == "Spread") then
-                    c.BackgroundColor3 = (c.Text == COIN_MODE) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+                    c.BackgroundColor3 = (c.Text == COIN_MODE) and Color3.fromRGB(110, 80, 230) or Color3.fromRGB(28, 22, 55)
                 end
             end
         end)
@@ -937,7 +989,7 @@ local function showAF()
     lbl.Size = UDim2.new(1, -16, 0, 18)
     lbl.BackgroundTransparency = 1
     lbl.Text = "Speed: " .. SP
-    lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    lbl.TextColor3 = Color3.fromRGB(170, 160, 240)
     lbl.Font = Enum.Font.Gotham
     lbl.TextSize = 12
     lbl.LayoutOrder = 12
@@ -945,7 +997,7 @@ local function showAF()
 
     local box = Instance.new("TextBox")
     box.Size = UDim2.new(1, -16, 0, 28)
-    box.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    box.BackgroundColor3 = Color3.fromRGB(24, 20, 50)
     box.Text = tostring(SP)
     box.TextColor3 = Color3.new(1,1,1)
     box.Font = Enum.Font.GothamBold
@@ -977,7 +1029,7 @@ local function showAF()
     delayLbl.Size = UDim2.new(1, -16, 0, 18)
     delayLbl.BackgroundTransparency = 1
     delayLbl.Text = "Coin Delay: " .. COIN_DELAY .. "s"
-    delayLbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    delayLbl.TextColor3 = Color3.fromRGB(170, 160, 240)
     delayLbl.Font = Enum.Font.Gotham
     delayLbl.TextSize = 12
     delayLbl.LayoutOrder = 14
@@ -985,7 +1037,7 @@ local function showAF()
 
     local delayBox = Instance.new("TextBox")
     delayBox.Size = UDim2.new(1, -16, 0, 28)
-    delayBox.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    delayBox.BackgroundColor3 = Color3.fromRGB(24, 20, 50)
     delayBox.Text = tostring(COIN_DELAY)
     delayBox.TextColor3 = Color3.new(1,1,1)
     delayBox.Font = Enum.Font.GothamBold
@@ -1014,7 +1066,7 @@ local function showAF()
     cnt.Size = UDim2.new(1, -16, 0, 20)
     cnt.BackgroundTransparency = 1
     cnt.Text = "Collected: 0"
-    cnt.TextColor3 = Color3.fromRGB(255, 190, 100)
+    cnt.TextColor3 = Color3.fromRGB(190, 175, 255)
     cnt.Font = Enum.Font.Gotham
     cnt.TextSize = 12
     cnt.LayoutOrder = 16
@@ -1028,7 +1080,7 @@ local function showAF()
 
     local decalBtn = Instance.new("TextButton")
     decalBtn.Size = UDim2.new(1, -16, 0, 34)
-    decalBtn.BackgroundColor3 = Color3.fromRGB(90, 50, 30)
+    decalBtn.BackgroundColor3 = Color3.fromRGB(70, 55, 150)
     decalBtn.Text = "Delete All Decals"
     decalBtn.TextColor3 = Color3.new(1,1,1)
     decalBtn.Font = Enum.Font.GothamBold
@@ -1046,7 +1098,7 @@ local function showAF()
 
     local jobBtn = Instance.new("TextButton")
     jobBtn.Size = UDim2.new(1, -16, 0, 34)
-    jobBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 160)
+    jobBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
     jobBtn.Text = "Copy JobId (Delta)"
     jobBtn.TextColor3 = Color3.new(1,1,1)
     jobBtn.Font = Enum.Font.GothamBold
@@ -1069,7 +1121,7 @@ local function showServers()
 
     local hopBtn = Instance.new("TextButton")
     hopBtn.Size = UDim2.new(1, -16, 0, 40)
-    hopBtn.BackgroundColor3 = Color3.fromRGB(30, 120, 50)
+    hopBtn.BackgroundColor3 = Color3.fromRGB(40, 140, 120)
     hopBtn.Text = "Low Player Server"
     hopBtn.TextColor3 = Color3.new(1,1,1)
     hopBtn.Font = Enum.Font.GothamBold
@@ -1088,7 +1140,7 @@ local function showServers()
 
     local tpBtn = Instance.new("TextButton")
     tpBtn.Size = UDim2.new(1, -16, 0, 40)
-    tpBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 15)
+    tpBtn.BackgroundColor3 = Color3.fromRGB(90, 60, 180)
     tpBtn.Text = "TP Secret Place"
     tpBtn.TextColor3 = Color3.new(1,1,1)
     tpBtn.Font = Enum.Font.GothamBold
@@ -1109,14 +1161,14 @@ local function showMove()
     lbl.Size = UDim2.new(1, -16, 0, 18)
     lbl.BackgroundTransparency = 1
     lbl.Text = "JumpPower: " .. JP
-    lbl.TextColor3 = Color3.fromRGB(230, 180, 120)
+    lbl.TextColor3 = Color3.fromRGB(170, 160, 240)
     lbl.Font = Enum.Font.Gotham
     lbl.TextSize = 12
     lbl.LayoutOrder = 2
     lbl.Parent = content
     local box = Instance.new("TextBox")
     box.Size = UDim2.new(1, -16, 0, 28)
-    box.BackgroundColor3 = Color3.fromRGB(32, 14, 6)
+    box.BackgroundColor3 = Color3.fromRGB(24, 20, 50)
     box.Text = tostring(JP)
     box.TextColor3 = Color3.new(1,1,1)
     box.Font = Enum.Font.GothamBold
@@ -1146,7 +1198,7 @@ local function showModes()
     hdr.Size = UDim2.new(1, -16, 0, 36)
     hdr.BackgroundTransparency = 1
     hdr.Text = "Farm Modes\nCurrent: " .. tostring(FARM_MODE)
-    hdr.TextColor3 = Color3.fromRGB(255, 180, 100)
+    hdr.TextColor3 = Color3.fromRGB(180, 160, 255)
     hdr.Font = Enum.Font.GothamBold
     hdr.TextSize = 12
     hdr.TextYAlignment = Enum.TextYAlignment.Top
@@ -1165,7 +1217,7 @@ local function showModes()
         local b = Instance.new("TextButton")
         b.Name = "Mode_" .. name
         b.Size = UDim2.new(1, -16, 0, 44)
-        b.BackgroundColor3 = (FARM_MODE == name) and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+        b.BackgroundColor3 = (FARM_MODE == name) and Color3.fromRGB(110, 80, 230) or Color3.fromRGB(28, 22, 55)
         b.Text = name .. "  -  " .. desc
         b.TextColor3 = Color3.new(1, 1, 1)
         b.Font = Enum.Font.GothamBold
@@ -1179,7 +1231,7 @@ local function showModes()
             for _, c in ipairs(content:GetChildren()) do
                 if c:IsA("TextButton") and string.sub(c.Name, 1, 5) == "Mode_" then
                     local on = (c.Name == "Mode_" .. name)
-                    c.BackgroundColor3 = on and Color3.fromRGB(190, 85, 25) or Color3.fromRGB(38, 16, 8)
+                    c.BackgroundColor3 = on and Color3.fromRGB(110, 80, 230) or Color3.fromRGB(28, 22, 55)
                 end
             end
         end)
@@ -1195,16 +1247,16 @@ for i, tab in ipairs(tabs) do
     local b = mkBtn(tab.name, (i-1)*38 + 8, side)
     b.MouseButton1Click:Connect(function()
         for _, c in ipairs(side:GetChildren()) do
-            if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(48, 22, 8) end
+            if c:IsA("TextButton") then c.BackgroundColor3 = Color3.fromRGB(40, 32, 80) end
         end
-        b.BackgroundColor3 = Color3.fromRGB(190, 85, 25)
+        b.BackgroundColor3 = Color3.fromRGB(110, 80, 230)
         tab.fn()
     end)
 end
 
 showAF()
 local first = side:FindFirstChildOfClass("TextButton")
-if first then first.BackgroundColor3 = Color3.fromRGB(190, 85, 25) end
+if first then first.BackgroundColor3 = Color3.fromRGB(110, 80, 230) end
 
 UIS.JumpRequest:Connect(function()
     if IJ and lp.Character and lp.Character:FindFirstChild("Humanoid") then
