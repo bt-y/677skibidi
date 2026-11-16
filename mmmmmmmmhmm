@@ -1,5 +1,5 @@
 print("[mm2 coins farm] Loading...")
-print("[mm2 coins farm] Defaults: FastUnder | Speed 18 | Delay 1.8 | AutoFarm ON | Closest | Hop if >8 players")
+print("[mm2 coins farm] Defaults: FastUnder (10 studs under) | Delay 1.8 | AutoFarm ON | Closest | Hop if >8 players")
 
 -- =========================================================
 -- (SERVICES)
@@ -16,8 +16,6 @@ local TeleportService = game:GetService("TeleportService")
 local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
--- Farm-only build: no dual-load, no transfer, no ESP
-
 -- =========================================================
 -- (PLACE IDS)
 -- =========================================================
@@ -25,20 +23,6 @@ local HIDDEN_ID = 80469437126309
 local PLACE_ID = game.PlaceId
 local isHidden = (game.PlaceId == HIDDEN_ID)
 local CURRENT_PLACE = game.PlaceId
-
--- =========================================================
--- (LISTED USERS - fling / watch group)
--- =========================================================
-local WL = {
-    ["veqiex"] = true,
-    ["naimradio66"] = true,
-    ["naimradio6"] = true,
-    ["naimradiouse0"] = true,
-    ["naimradiouse00"] = true,
-    ["naimradiouse000"] = true,
-    ["naimradiouse0000"] = true,
-    ["dmitry6221"] = true,
-}
 
 -- =========================================================
 -- (HTTP / SERVER HOP)
@@ -136,8 +120,6 @@ local function copyJoinCode()
 end
 
 -- =========================================================
--- (FARM ONLY - NO TRANSFER / NO WEBHOOK / NO WISPBYTE)
--- =========================================================
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
@@ -151,20 +133,15 @@ local RF = true
 local PM = false
 local IJ = false
 local JP = 50
-local COIN_MODE = "Closest"     -- Default set to Closest as requested
-local FARM_MODE = "FastUnder"   -- Default set to Fast as requested
+local COIN_MODE = "Closest"
+local FARM_MODE = "FastUnder"
 local NOCLIP = false
 local NORENDER = false
-local COIN_DELAY = 1.8          -- Cooldown set to 1.8s as requested
+local COIN_DELAY = 1.8
 local AUTO_HOP_PLAYERS = 8
 local AUTO_HOP_EVERY = 60
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
-local listedDone = {}
-local FLING_ENABLED = false
-local flinging = false
-local lastFling = 0
-local KILL_MURDER_ON_DEATH = false
 local PLAYER_NOCLIP = false
 local realCoins = 0
 local realMax = 40
@@ -282,145 +259,6 @@ local function setNoRender(on)
     end)
 end
 
-local function getRole(pl)
-    local ok, roles = pcall(function()
-        local r = RPS:FindFirstChild("GetPlayerData", true)
-        if r then return r:InvokeServer() end
-    end)
-    if ok and roles and roles[pl.Name] then
-        return roles[pl.Name].Role or "Innocent"
-    end
-    local ch = pl.Character
-    if ch then
-        if ch:FindFirstChild("Knife") or (pl.Backpack and pl.Backpack:FindFirstChild("Knife")) then return "Murderer" end
-        if ch:FindFirstChild("Gun") or (pl.Backpack and pl.Backpack:FindFirstChild("Gun")) then return "Sheriff" end
-    end
-    return "Innocent"
-end
-
-local function getMurderer()
-    for _, pl in ipairs(P:GetPlayers()) do
-        if getRole(pl) == "Murderer" then return pl end
-    end
-end
-
-local function markListedDone(name)
-    if WL[name] then
-        listedDone[name] = true
-    end
-end
-
-local function listedInServer()
-    local t = {}
-    for _, pl in ipairs(P:GetPlayers()) do
-        if WL[pl.Name] then
-            table.insert(t, pl)
-        end
-    end
-    return t
-end
-
-local function allListedDone()
-    local inSrv = listedInServer()
-    if #inSrv == 0 then return false end
-    for _, pl in ipairs(inSrv) do
-        if not listedDone[pl.Name] then
-            return false
-        end
-    end
-    return true
-end
-
-local function clearListedDone()
-    listedDone = {}
-end
-
-local function flingMurder()
-    if not FLING_ENABLED then return end
-    if flinging then return end
-    if tick() - lastFling < 8 then return end
-    local murd = getMurderer()
-    if not murd then return end
-    if WL[murd.Name] then return end
-    local mChar = murd.Character
-    local mRoot = mChar and mChar:FindFirstChild("HumanoidRootPart")
-    local ch = lp.Character
-    local root = ch and ch:FindFirstChild("HumanoidRootPart")
-    local hum = ch and ch:FindFirstChild("Humanoid")
-    if not mRoot or not root or not hum then return end
-
-    flinging = true
-    lastFling = tick()
-
-    task.spawn(function()
-        setVoidProtect(true)
-        setNoclip(true)
-        local t0 = tick()
-        while tick() - t0 < 3.5 do
-            if not mRoot or not mRoot.Parent then break end
-            if not root or not root.Parent then break end
-            if root.Position.Y < -80 then break end
-            root.Anchored = false
-            hum.PlatformStand = true
-            root.CFrame = mRoot.CFrame * CFrame.new(0, 0, 1)
-            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            root.AssemblyAngularVelocity = Vector3.new(9e3, 9e3, 9e3)
-            task.wait(0.05)
-        end
-        if root and root.Parent then
-            root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
-            root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            if root.Position.Y < -50 then
-                local p = root.Position
-                root.CFrame = CFrame.new(p.X, 40, p.Z)
-            end
-        end
-        if hum and hum.Parent then
-            hum.PlatformStand = false
-        end
-        flinging = false
-        clearListedDone()
-    end)
-end
-
-local function tryFlingIfReady()
-    if not allListedDone() then return end
-    flingMurder()
-end
-
-local function hookChar(pl)
-    if not WL[pl.Name] then return end
-    local function onChar(ch)
-        local hum = ch:WaitForChild("Humanoid", 5)
-        if not hum then return end
-        hum.Died:Connect(function()
-            markListedDone(pl.Name)
-            tryFlingIfReady()
-        end)
-    end
-    if pl.Character then onChar(pl.Character) end
-    pl.CharacterAdded:Connect(onChar)
-end
-
-for _, pl in ipairs(P:GetPlayers()) do
-    hookChar(pl)
-end
-P.PlayerAdded:Connect(hookChar)
-
-task.spawn(function()
-    while true do
-        task.wait(1.5)
-        for _, pl in ipairs(listedInServer()) do
-            local ch = pl.Character
-            local hum = ch and ch:FindFirstChild("Humanoid")
-            if not ch or not hum or hum.Health <= 0 then
-                markListedDone(pl.Name)
-            end
-        end
-        tryFlingIfReady()
-    end
-end)
-
 local function removeAllDecals()
     local n = 0
     for _, v in ipairs(workspace:GetDescendants()) do
@@ -527,12 +365,12 @@ local function touchCoin(coin, root)
 end
 
 -- =========================================================
--- INSTANT TELEPORT COLLECTION (Hard ruled: only tries once)
+-- INSTANT TELEPORT 10 STUDS UNDER COIN (Stays safe from players)
 -- =========================================================
 local function goToCoin(root, hum, coin)
     if not root or not coin or not coinStillValid(coin) then return false end
     
-    -- Hard rule: Mark as visited immediately so it never retries the same coin 3 or 4 times
+    -- Hard rule: Mark as visited immediately so it only tries once per coin
     VS[coin] = true
 
     root.Anchored = false
@@ -542,14 +380,14 @@ local function goToCoin(root, hum, coin)
     end
     root.AssemblyLinearVelocity = Vector3.zero
 
-    -- Instant teleport directly to the coin position based on mode
+    -- Teleport 10 studs under the coin so you stay hidden/safe from other players
     if FARM_MODE == "Flat" then
-        root.CFrame = CFrame.new(coin.Position) * FLAT
+        root.CFrame = CFrame.new(coin.Position - Vector3.new(0, 10, 0)) * FLAT
     else
-        root.CFrame = CFrame.new(coin.Position + Vector3.new(0, 2.5, 0))
+        root.CFrame = CFrame.new(coin.Position - Vector3.new(0, 10, 0))
     end
 
-    -- Touch once
+    -- Fire touch interest to collect it while staying under
     touchCoin(coin, root)
     return true
 end
@@ -557,7 +395,6 @@ end
 local function pickTarget(candidates)
     if #candidates == 0 then return nil end
     table.sort(candidates, function(a, b) return a.dist < b.dist end)
-    -- Closest coin mode as requested
     return candidates[1].obj
 end
 
@@ -704,7 +541,6 @@ local function showAF()
         if v then
             CL = 0
             VS = {}
-            clearListedDone()
             restoreMovement()
             local n = rebuildCoinCache()
             print("[Farm] AutoFarm ON | coins found:", n)
@@ -768,10 +604,6 @@ local function showAF()
     makeModeBtn("Surface", "Surface")
     makeModeBtn("Flat", "Flat")
     makeModeBtn("FastUnder", "Fast")
-
-    mkToggle("Kill Murder on Death", content, KILL_MURDER_ON_DEATH, function(v)
-        KILL_MURDER_ON_DEATH = v
-    end).LayoutOrder = 7
 
     mkToggle("Player Noclip", content, PLAYER_NOCLIP, function(v)
         setPlayerNoclip(v)
@@ -985,8 +817,6 @@ if coinRemote then
         if typeof(cur) == "number" then realCoins = cur end
         if typeof(max) == "number" then realMax = max end
         if cur and max and cur >= max then
-            markListedDone(lp.Name)
-            tryFlingIfReady()
             task.wait(0.4)
             if RF and lp.Character then
                 lp.Character:BreakJoints()
@@ -996,7 +826,7 @@ if coinRemote then
 end
 
 -- =========================================================
--- MAIN FARMING LOOP (Instant Teleport + 1.8s CD)
+-- MAIN FARMING LOOP (Instant TP 10 studs under + 1.8s CD)
 -- =========================================================
 task.spawn(function()
     local lastClear = tick()
@@ -1010,8 +840,6 @@ task.spawn(function()
             local hum = ch and ch:FindFirstChild("Humanoid")
             if not (root and hum and hum.Health > 0) then
                 task.wait(0.3)
-            elseif flinging then
-                task.wait(0.2)
             else
                 if tick() - lastClear > 20 then
                     VS = {}
@@ -1049,7 +877,7 @@ task.spawn(function()
                             CL = CL + 1
                             lastCollectTick = tick()
                         end
-                        task.wait(COIN_DELAY) -- Uses 1.8s cooldown
+                        task.wait(COIN_DELAY) -- 1.8s CD
                     else
                         task.wait(0.25)
                     end
@@ -1143,4 +971,4 @@ task.spawn(function()
     end
 end)
 
-print("[mm2 coins farm] AutoFarm ON | FastUnder | Closest | CD=1.8 | hop if >8 players")
+print("[mm2 coins farm] AutoFarm ON | FastUnder (10 studs under) | Closest | CD=1.8 | hop if >8 players")
