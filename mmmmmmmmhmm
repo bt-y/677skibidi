@@ -1,6 +1,60 @@
-
+-- put this at the VERY top of ddd.lua
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "MM2 Farm",
+        Text = "Autoexec loaded",
+        Duration = 8
+    })
+end)
+print("[MM2 Farm] AUTOEXEC LOADED at", os.date("%H:%M:%S"))
 print("[mm2 coins farm] Loading...")
 print("[mm2 coins farm] Defaults: Fast | Speed 12 | Delay 1.7 | Closest | AutoFarm ON | Hop if >8 players")
+-- =========================================================
+-- BOOT: notification + kill loading screen + force GUI on top
+-- =========================================================
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "MM2 Farm",
+        Text = "Autoexec loaded",
+        Duration = 8
+    })
+end)
+print("[MM2 Farm] AUTOEXEC LOADED at", os.date("%H:%M:%S"))
+
+-- Remove Roblox default loading screen
+pcall(function()
+    game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
+end)
+
+-- Keep fighting loading UI for a few seconds after join
+task.spawn(function()
+    local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui", 30)
+    if not pg then return end
+
+    local function hideLoaders()
+        for _, g in ipairs(pg:GetChildren()) do
+            if g:IsA("ScreenGui") then
+                local n = string.lower(g.Name)
+                -- do NOT hide our own GUI
+                if g.Name == "mm2FarmLight" or g.Name == "mm2Farm" then
+                    g.Enabled = true
+                    g.DisplayOrder = 999999
+                    g.IgnoreGuiInset = true
+                elseif n:find("load") or n:find("intro") or n:find("transition")
+                    or n:find("fade") or n:find("splash") then
+                    pcall(function()
+                        g.Enabled = false
+                    end)
+                end
+            end
+        end
+    end
+
+    for i = 1, 40 do
+        hideLoaders()
+        task.wait(0.25)
+    end
+end)
 
 -- =========================================================
 -- (SERVICES)
@@ -1254,6 +1308,12 @@ if coinRemote then
 end
 
 -- =========================================================
+gui.Name = "mm2FarmLight"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 999999
+gui.IgnoreGuiInset = true
+gui.Parent = pg
 
 task.spawn(function()
     local lastClear = tick()
