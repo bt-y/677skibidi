@@ -1,5 +1,5 @@
 print("[mm2 coins farm] Loading...")
-print("[mm2 coins farm] Defaults: Flat Under-Coin Teleport (Safe from Void) | Delay 1.8 | AutoFarm ON")
+print("[mm2 coins farm] Defaults: Direct Coin Teleport | Delay 1.8 | AutoFarm ON | Closest")
 
 -- =========================================================
 -- (SERVICES)
@@ -134,15 +134,15 @@ local PM = false
 local IJ = false
 local JP = 50
 local COIN_MODE = "Closest"
-local FARM_MODE = "Flat"
-local NOCLIP = true
+local FARM_MODE = "Fast"
+local NOCLIP = false
 local NORENDER = false
 local COIN_DELAY = 1.8
 local AUTO_HOP_PLAYERS = 8
 local AUTO_HOP_EVERY = 60
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
-local PLAYER_NOCLIP = true
+local PLAYER_NOCLIP = false
 local realCoins = 0
 local realMax = 40
 
@@ -155,9 +155,18 @@ local function setNoclip(on)
 end
 
 local function applyPlayerNoclipToChar(ch)
-    if not ch then return end
+    if not ch or not PLAYER_NOCLIP then return end
     for _, p in ipairs(ch:GetDescendants()) do
         if p:IsA("BasePart") then p.CanCollide = false end
+    end
+end
+
+local function setPlayerNoclip(on)
+    PLAYER_NOCLIP = on
+    if on then
+        applyPlayerNoclipToChar(lp.Character)
+    else
+        if not NOCLIP then setNoclip(false) end
     end
 end
 
@@ -176,8 +185,9 @@ local function restoreMovement()
             hum.PlatformStand = false
             hum.Sit = false
             hum.AutoRotate = true
+            if hum.WalkSpeed < 1 then hum.WalkSpeed = 16 end
         end
-        setNoclip(true)
+        if not NOCLIP then setNoclip(false) end
     end)
 end
 
@@ -289,9 +299,6 @@ local function coinStillValid(coin)
     return true
 end
 
--- Proper flat angle laying completely on back/stomach horizontally
-local FLAT_ROTATION = CFrame.Angles(math.rad(90), 0, 0)
-
 local function touchCoin(coin, root)
     if not coin or not coin.Parent or not root then return end
     pcall(function()
@@ -306,36 +313,26 @@ local function touchCoin(coin, root)
 end
 
 -- =========================================================
--- SAFE FLAT UNDERGROUND TELEPORT (Locked position, no falling)
+-- DIRECT TELEPORT COLLECTION (Hard-ruled: only tries once per coin)
 -- =========================================================
 local function goToCoin(root, hum, coin)
     if not root or not coin or not coinStillValid(coin) then return false end
     
-    -- Mark visited so it never loops back to the same coin
+    -- Hard rule: Mark as visited immediately so it only tries once
     VS[coin] = true
 
-    if hum then
-        hum.PlatformStand = true
-        hum.AutoRotate = false
-    end
-    setNoclip(true)
-
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    
-    -- Teleport 10 studs directly beneath the coin, positioned flat, and anchor to avoid falling
-    local targetCFrame = CFrame.new(coin.Position - Vector3.new(0, 10, 0)) * FLAT_ROTATION
-    root.CFrame = targetCFrame
-    root.Anchored = true
-
-    -- Fire touch interest multiple times to secure collection while anchored safely
-    for i = 1, 3 do
-        if not coinStillValid(coin) then break end
-        touchCoin(coin, root)
-        task.wait(0.05)
-    end
-
     root.Anchored = false
+    if hum then
+        hum.PlatformStand = false
+        hum.Sit = false
+    end
+    root.AssemblyLinearVelocity = Vector3.zero
+
+    -- Direct teleport to the coin position
+    root.CFrame = CFrame.new(coin.Position + Vector3.new(0, 2.5, 0))
+
+    -- Touch once to collect
+    touchCoin(coin, root)
     return true
 end
 
@@ -499,6 +496,8 @@ local function showAF()
 
     mkToggle("Anti AFK", content, AK, function(v) AK = v end).LayoutOrder = 2
     mkToggle("Reset on Full", content, RF, function(v) RF = v end).LayoutOrder = 3
+    mkToggle("Noclip", content, NOCLIP, function(v) NOCLIP = v setNoclip(v) end).LayoutOrder = 5
+    mkToggle("Player Noclip", content, PLAYER_NOCLIP, function(v) setPlayerNoclip(v) end).LayoutOrder = 6
 
     local delayLbl = Instance.new("TextLabel")
     delayLbl.Size = UDim2.new(1, -16, 0, 18)
@@ -613,8 +612,8 @@ lp.CharacterAdded:Connect(function(ch)
     task.wait(0.3)
     VS = {}
     restoreMovement()
-    setNoclip(true)
-    applyPlayerNoclipToChar(ch)
+    if NOCLIP then setNoclip(true) end
+    if PLAYER_NOCLIP then applyPlayerNoclipToChar(ch) end
 end)
 
 local coinRemote = RPS:FindFirstChild("Remotes")
@@ -636,7 +635,7 @@ if coinRemote then
 end
 
 -- =========================================================
--- MAIN FARMING LOOP (Flat Position Safe Teleport)
+-- MAIN FARMING LOOP (Direct Teleport + 1.8s CD)
 -- =========================================================
 task.spawn(function()
     local lastClear = tick()
@@ -699,23 +698,12 @@ task.spawn(function()
 end)
 
 RS.Stepped:Connect(function()
-    setNoclip(true)
-    local ch = lp.Character
-    if ch then
-        local root = ch:FindFirstChild("HumanoidRootPart")
-        local hum = ch:FindFirstChild("Humanoid")
-        if root and hum and AF then
-            if not root.Anchored then
-                hum.PlatformStand = true
-                hum.AutoRotate = false
-            end
-        end
-    end
+    if NOCLIP then setNoclip(true) end
 end)
 
 task.defer(function()
     task.wait(0.2)
-    setNoclip(true)
+    restoreMovement()
 end)
 
 lp.Idled:Connect(function()
@@ -763,4 +751,4 @@ task.spawn(function()
     end
 end)
 
-print("[mm2 coins farm] AutoFarm ON | Safe Flat Underground | CD=1.8")
+print("[mm2 coins farm] AutoFarm ON | Direct Teleport | CD=1.8")
