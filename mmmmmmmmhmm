@@ -144,7 +144,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 20
+local SP = 18
 local RG = 500
 local VS = {}
 local CL = 0
@@ -732,7 +732,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.16-blue"
+title.Text = "mm2 coins farm | v2026.11.16-"
 title.TextColor3 = Color3.fromRGB(180, 160, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
