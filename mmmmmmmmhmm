@@ -575,7 +575,7 @@ local function touchCoin(coin, root)
     if type(firetouchinterest) == "function" then
         pcall(function()
             firetouchinterest(root, coin, 0)
-            task.wait(0.03)
+            task.wait(0.01)
             firetouchinterest(root, coin, 1)
         end)
     end
@@ -583,7 +583,7 @@ end
 
 local function touchCoinFast(coin, root)
     if not coin or not root then return end
-    for _ = 1, 4 do
+    for _ = 1, 2 do
         pcall(function()
             if firetouchinterest then
                 firetouchinterest(root, coin, 0)
@@ -592,7 +592,7 @@ local function touchCoinFast(coin, root)
                 firetouchinterest(coin, root, 1)
             end
         end)
-        task.wait(0.02)
+        task.wait(0.01)
     end
 end
 
@@ -652,32 +652,22 @@ local function goToCoin(root, hum, coin, speed)
         if newT and newT ~= current then
             current = newT
         elseif reached then
-            local tWait = tick()
-            while tick() - tWait < 0.2 do
-                if not (root and root.Parent) then break end
-                if not current.Parent then break end
-
-                -- Move the character root into the coin's position so the
-                -- normal touch collision can occur; don't mark it collected
-                -- merely because we reached the destination.
+            -- Quick touch then ALWAYS leave this coin (no 2s hover / no retry loop)
+            if current and current.Parent then
                 if FARM_MODE == "Flat" then
                     root.CFrame = CFrame.new(current.Position) * FLAT
                 else
-                    root.CFrame = CFrame.new(current.Position)
+                    root.CFrame = CFrame.new(current.Position + Vector3.new(0, 1.5, 0))
                 end
-
                 touchCoin(current, root)
-                task.wait(0.05)
+                touchCoinFast(current, root)
             end
-
-            if not current.Parent then
-                VS[current] = true
-                return true
-            end
-
-            -- If the coin is still present, leave it eligible for a retry.
-            return false
+            -- Blacklist immediately so next loop picks a DIFFERENT coin
+            if current then VS[current] = true end
+            return true
         else
+            -- move aborted (retarget fail / token cancel) - still blacklist to avoid sticky target
+            if current then VS[current] = true end
             return false
         end
     end
@@ -734,7 +724,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.16-surface"
+title.Text = "mm2 coins farm | v2026.11.16-cd"
 title.TextColor3 = Color3.fromRGB(255, 150, 50)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
@@ -1303,13 +1293,19 @@ task.spawn(function()
                     end
                     if target then
                         local ok = goToCoin(root, hum, target, SP)
+                        -- always mark so we never park on the same part
+                        VS[target] = true
                         if ok then
                             CL = CL + 1
                             lastCollectTick = tick()
                         end
-                        task.wait(COIN_DELAY)
+                        -- only this wait is the user CD (textbox). keep it short-capable.
+                        local cd = tonumber(COIN_DELAY) or 0.5
+                        if cd < 0.05 then cd = 0.05 end
+                        if cd > 5 then cd = 5 end
+                        task.wait(cd)
                     else
-                        task.wait(0.25)
+                        task.wait(0.15)
                     end
                 end
             end
@@ -1440,12 +1436,22 @@ task.spawn(function()
                 coinN = #getCoins()
             end)
             -- stuck forever with no collects
-            if idle > DEAD_SERVER_SEC then
+            -- Only hop if server is crowded. Never hop a quiet 1-3 player server.
+            local playersNow = #P:GetPlayers()
+            if idle > DEAD_SERVER_SEC and playersNow > AUTO_HOP_PLAYERS then
                 if tick() - lastHopAttempt > 45 then
                     lastHopAttempt = tick()
-                    print("[DeadServer] No collect for", math.floor(idle), "s | coins cache:", coinN, " hopping")
+                    print("[DeadServer] No collect for", math.floor(idle), "s | players:", playersNow, " hopping")
                     VS = {}
                     pcall(hopLowServer)
+                end
+            elseif idle > DEAD_SERVER_SEC and playersNow <= AUTO_HOP_PLAYERS then
+                -- stuck on a small server: just reset visited list, do NOT hop
+                if tick() - lastHopAttempt > 60 then
+                    lastHopAttempt = tick()
+                    VS = {}
+                    rebuildCoinCache()
+                    print("[DeadServer] Idle", math.floor(idle), "s but only", playersNow, "players - NOT hopping")
                 end
             end
         end
