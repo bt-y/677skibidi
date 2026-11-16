@@ -144,7 +144,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 16
+local SP = 20
 local RG = 500
 local VS = {}
 local CL = 0
