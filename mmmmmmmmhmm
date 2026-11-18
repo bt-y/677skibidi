@@ -144,7 +144,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 18
+local SP = 24
 local RG = 500
 local VS = {}
 local CL = 0
@@ -154,13 +154,13 @@ local RF = true
 local PM = false
 local IJ = false
 local JP = 50
-local COIN_MODE = "Closest"
+local COIN_MODE = "Spread"
 local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
 local NOCLIP = false
-local NORENDER = false
+local NORENDER = true
 local COIN_DELAY = 0.5
 local AUTO_HOP_PLAYERS = 8
-local AUTO_HOP_EVERY = 60
+local AUTO_HOP_EVERY = 320
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
 local moveToken = 0
