@@ -144,7 +144,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 24
+local SP = 28
 local RG = 500
 local VS = {}
 local CL = 0
@@ -159,8 +159,8 @@ local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
 local NOCLIP = false
 local NORENDER = true
 local COIN_DELAY = 0.5
-local AUTO_HOP_PLAYERS = 8
-local AUTO_HOP_EVERY = 320
+local AUTO_HOP_PLAYERS = 13
+local AUTO_HOP_EVERY = 9999
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
 local moveToken = 0
