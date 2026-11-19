@@ -1,106 +1,103 @@
-local Players = game:GetService("Players")
-local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
+task.spawn(function()
+	if not game:IsLoaded() then
+		game.Loaded:Wait()
+	end
 
-local TARGET_PLACE_ID = 80469437126309
-local MAX_PLAYERS = 5 -- Strictly under 5 players (0 to 4)
-local MAX_PAGES = 10 -- Increase if the game has thousands of servers
+	local Players = game:GetService("Players")
+	local TeleportService = game:GetService("TeleportService")
+	local HttpService = game:GetService("HttpService")
 
-local localPlayer = Players.LocalPlayer
+	local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
--- 1. Check if already in the target place
-if game.PlaceId == TARGET_PLACE_ID then
-	warn("Already in target place (" .. TARGET_PLACE_ID .. "). Skipping teleport.")
-	return
-end
+	local TARGET_PLACE_ID = 80469437126309
+	local MAX_PLAYERS = 5
+	local MAX_PAGES = 10
 
--- 2. Resolve HTTP request function in Delta
-local httpRequest = (syn and syn.request)
-	or (http and http.request)
-	or http_request
-	or request
+	-- 1. Exit ONLY this task if already in the target place (won't block other scripts)
+	if game.PlaceId == TARGET_PLACE_ID then
+		return
+	end
 
-if not httpRequest then
-	warn("Executor HTTP request function not found.")
-	return
-end
+	local httpRequest = (syn and syn.request)
+		or (http and http.request)
+		or http_request
+		or request
 
--- 3. Search public servers for one with < MAX_PLAYERS
-local function findSmallServer()
-	local cursor = ""
+	if not httpRequest then
+		warn("[Teleporter] HTTP request function not found.")
+		return
+	end
 
-	for _ = 1, MAX_PAGES do
-		local url = string.format(
-			"https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s",
-			TARGET_PLACE_ID,
-			cursor ~= "" and ("&cursor=" .. HttpService:UrlEncode(cursor)) or ""
-		)
+	local function findSmallServer()
+		local cursor = ""
 
-		local ok, res = pcall(function()
-			return httpRequest({ Url = url, Method = "GET" })
-		end)
+		for _ = 1, MAX_PAGES do
+			local url = string.format(
+				"https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s",
+				TARGET_PLACE_ID,
+				cursor ~= "" and ("&cursor=" .. HttpService:UrlEncode(cursor)) or ""
+			)
 
-		if not ok or not res or not res.Body then
-			warn("Failed to fetch server list.")
-			break
-		end
+			local ok, res = pcall(function()
+				return httpRequest({ Url = url, Method = "GET" })
+			end)
 
-		local decodedOk, data = pcall(function()
-			return HttpService:JSONDecode(res.Body)
-		end)
+			if not ok or not res or not res.Body then
+				break
+			end
 
-		if not decodedOk or type(data) ~= "table" or type(data.data) ~= "table" then
-			warn("Failed to parse server JSON.")
-			break
-		end
+			local decodedOk, data = pcall(function()
+				return HttpService:JSONDecode(res.Body)
+			end)
 
-		for _, server in ipairs(data.data) do
-			local playing = tonumber(server.playing)
-			local maxPlayers = tonumber(server.maxPlayers) or 0
-			local serverId = server.id
+			if not decodedOk or type(data) ~= "table" or type(data.data) ~= "table" then
+				break
+			end
 
-			if serverId
-				and serverId ~= game.JobId
-				and playing ~= nil
-				and playing < MAX_PLAYERS
-				and playing < maxPlayers
-			then
-				return serverId, playing, maxPlayers
+			for _, server in ipairs(data.data) do
+				local playing = tonumber(server.playing)
+				local maxPlayers = tonumber(server.maxPlayers) or 0
+				local serverId = server.id
+
+				if serverId
+					and serverId ~= game.JobId
+					and playing ~= nil
+					and playing < MAX_PLAYERS
+					and playing < maxPlayers
+				then
+					return serverId
+				end
+			end
+
+			local lastServer = data.data[#data.data]
+			if lastServer and tonumber(lastServer.playing) and tonumber(lastServer.playing) >= MAX_PLAYERS then
+				break
+			end
+
+			if data.nextPageCursor and data.nextPageCursor ~= "" then
+				cursor = data.nextPageCursor
+			else
+				break
 			end
 		end
 
-		-- Because sortOrder=Asc lists smallest servers first, stop early if counts already hit MAX_PLAYERS
-		local lastServer = data.data[#data.data]
-		if lastServer and tonumber(lastServer.playing) and tonumber(lastServer.playing) >= MAX_PLAYERS then
-			break
-		end
-
-		if data.nextPageCursor and data.nextPageCursor ~= "" then
-			cursor = data.nextPageCursor
-		else
-			break
-		end
+		return nil
 	end
 
-	return nil
-end
+	local targetJobId = findSmallServer()
+	if not targetJobId then
+		warn("[Teleporter] No server under " .. MAX_PLAYERS .. " players found.")
+		return
+	end
 
-local targetJobId, playingCount, maxCount = findSmallServer()
+	local tpOk, tpErr = pcall(function()
+		TeleportService:TeleportToPlaceInstance(TARGET_PLACE_ID, targetJobId, localPlayer)
+	end)
 
-if not targetJobId then
-	warn("No public server with under " .. MAX_PLAYERS .. " players found for place " .. TARGET_PLACE_ID .. ".")
-	return
-end
-
-print(string.format("Found server %s (%d/%d players). Teleporting...", targetJobId, playingCount, maxCount))
-
-local tpOk, tpErr = pcall(function()
-	TeleportService:TeleportToPlaceInstance(TARGET_PLACE_ID, targetJobId, localPlayer)
+	if not tpOk then
+		warn("[Teleporter] Teleport failed: " .. tostring(tpErr))
+	end
 end)
-
-if not tpOk then
-	warn("TeleportToPlaceInstance failed: " .. tostring(tpErr))
-end
 print("[mm2 coins farm] Loading...")
 print("[mm2 coins farm] Defaults: Surface | Speed 16 | Delay 0.5 | Closest | AutoFarm ON | Hop if >8")
 
