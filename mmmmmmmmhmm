@@ -1,3 +1,21 @@
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+
+local TARGET_PLACE_ID = 80469437126309
+local localPlayer = Players.LocalPlayer
+
+if game.PlaceId == TARGET_PLACE_ID then
+	warn("Already in target place (" .. TARGET_PLACE_ID .. "). Skipping teleport.")
+	return
+end
+
+local success, err = pcall(function()
+	TeleportService:Teleport(TARGET_PLACE_ID, localPlayer)
+end)
+
+if not success then
+	warn("Teleport failed: " .. tostring(err))
+end
 
 print("[mm2 coins farm] Loading...")
 print("[mm2 coins farm] Defaults: Surface | Speed 16 | Delay 0.5 | Closest | AutoFarm ON | Hop if >8")
