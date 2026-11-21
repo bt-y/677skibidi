@@ -1,152 +1,14 @@
--- =========================================================
--- BOOT: notify + hide loading screen + force our GUI on top
--- =========================================================
+
+print("[mm2 coins farm] Loading...")
+print("[mm2 coins farm] Defaults: Surface | Speed 16 | Delay 0.5 | Spread | AutoFarm ON | Hop if >8")
+
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
         Title = "MM2 Farm",
         Text = "Script loaded",
-        Duration = 8
+        Duration = 6
     })
 end)
-print("[MM2 Farm] LOADED at", os.date("%H:%M:%S"))
-
-pcall(function()
-    game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
-end)
-
-task.spawn(function()
-    local pg0 = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui", 30)
-    if not pg0 then return end
-
-    local function hideLoaders()
-        for _, g in ipairs(pg0:GetChildren()) do
-            if g:IsA("ScreenGui") then
-                local n = string.lower(g.Name)
-                if g.Name == "mm2FarmLight" or g.Name == "mm2Farm" then
-                    g.Enabled = true
-                    g.DisplayOrder = 999999
-                    g.IgnoreGuiInset = true
-                elseif n:find("load") or n:find("intro") or n:find("transition")
-                    or n:find("fade") or n:find("splash") then
-                    pcall(function() g.Enabled = false end)
-                end
-            end
-        end
-    end
-
-    for _ = 1, 40 do
-        hideLoaders()
-        task.wait(0.25)
-    end
-end)
-
-
-
-
-
-
-task.spawn(function()
-	if not game:IsLoaded() then
-		game.Loaded:Wait()
-	end
-
-	local Players = game:GetService("Players")
-	local TeleportService = game:GetService("TeleportService")
-	local HttpService = game:GetService("HttpService")
-
-	local localPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
-
-	local TARGET_PLACE_ID = 80469437126309
-	local MAX_PLAYERS = 5
-	local MAX_PAGES = 10
-
-	-- 1. Exit ONLY this task if already in the target place (won't block other scripts)
-	if game.PlaceId == TARGET_PLACE_ID then
-		return
-	end
-
-	local httpRequest = (syn and syn.request)
-		or (http and http.request)
-		or http_request
-		or request
-
-	if not httpRequest then
-		warn("[Teleporter] HTTP request function not found.")
-		return
-	end
-
-	local function findSmallServer()
-		local cursor = ""
-
-		for _ = 1, MAX_PAGES do
-			local url = string.format(
-				"https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100%s",
-				TARGET_PLACE_ID,
-				cursor ~= "" and ("&cursor=" .. HttpService:UrlEncode(cursor)) or ""
-			)
-
-			local ok, res = pcall(function()
-				return httpRequest({ Url = url, Method = "GET" })
-			end)
-
-			if not ok or not res or not res.Body then
-				break
-			end
-
-			local decodedOk, data = pcall(function()
-				return HttpService:JSONDecode(res.Body)
-			end)
-
-			if not decodedOk or type(data) ~= "table" or type(data.data) ~= "table" then
-				break
-			end
-
-			for _, server in ipairs(data.data) do
-				local playing = tonumber(server.playing)
-				local maxPlayers = tonumber(server.maxPlayers) or 0
-				local serverId = server.id
-
-				if serverId
-					and serverId ~= game.JobId
-					and playing ~= nil
-					and playing < MAX_PLAYERS
-					and playing < maxPlayers
-				then
-					return serverId
-				end
-			end
-
-			local lastServer = data.data[#data.data]
-			if lastServer and tonumber(lastServer.playing) and tonumber(lastServer.playing) >= MAX_PLAYERS then
-				break
-			end
-
-			if data.nextPageCursor and data.nextPageCursor ~= "" then
-				cursor = data.nextPageCursor
-			else
-				break
-			end
-		end
-
-		return nil
-	end
-
-	local targetJobId = findSmallServer()
-	if not targetJobId then
-		warn("[Teleporter] No server under " .. MAX_PLAYERS .. " players found.")
-		return
-	end
-
-	local tpOk, tpErr = pcall(function()
-		TeleportService:TeleportToPlaceInstance(TARGET_PLACE_ID, targetJobId, localPlayer)
-	end)
-
-	if not tpOk then
-		warn("[Teleporter] Teleport failed: " .. tostring(tpErr))
-	end
-end)
-print("[mm2 coins farm] Loading...")
-print("[mm2 coins farm] Defaults: Surface | Speed 16 | Delay 0.5 | Closest | AutoFarm ON | Hop if >8")
 
 -- =========================================================
 -- (SERVICES)
@@ -290,7 +152,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 28
+local SP = 16
 local RG = 500
 local VS = {}
 local CL = 0
@@ -303,10 +165,10 @@ local JP = 50
 local COIN_MODE = "Spread"
 local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
 local NOCLIP = false
-local NORENDER = true
+local NORENDER = false
 local COIN_DELAY = 0.5
-local AUTO_HOP_PLAYERS = 13
-local AUTO_HOP_EVERY = 9999
+local AUTO_HOP_PLAYERS = 8
+local AUTO_HOP_EVERY = 60
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
 local moveToken = 0
@@ -594,25 +456,42 @@ local function listLiveCoins(root, maxDist)
     return list
 end
 
--- Pick a coin for Spread: score by distance + stable hash so accounts prefer different coins
+-- Spread: partition coins by stable world order + UserId slot so alts rarely share a target
 local function spreadPick(list)
     if #list == 0 then return nil end
     if #list == 1 then return list[1].obj end
-    local pool = math.min(12, #list)
-    local bestScore, bestObj = math.huge, list[1].obj
-    local salt = accountSalt()
-    for i = 1, pool do
-        local e = list[i]
-        -- lower score = more preferred; each account hashes coin position differently
-        local hx = math.floor(e.obj.Position.X * 0.5) + math.floor(e.obj.Position.Z * 0.5) * 31
-        local jitter = ((hx + salt * 17 + i * 3) % 100) / 100
-        local score = e.dist * (0.55 + jitter * 0.9)
-        if score < bestScore then
-            bestScore = score
-            bestObj = e.obj
+
+    local ranked = {}
+    for _, e in ipairs(list) do
+        table.insert(ranked, e)
+    end
+    -- Same order on every client (position hash), not "who is closest"
+    table.sort(ranked, function(a, b)
+        local ax, az = a.obj.Position.X, a.obj.Position.Z
+        local bx, bz = b.obj.Position.X, b.obj.Position.Z
+        local ha = math.floor(ax) * 73856093 + math.floor(az) * 19349663
+        local hb = math.floor(bx) * 73856093 + math.floor(bz) * 19349663
+        if ha == hb then return a.dist < b.dist end
+        return ha < hb
+    end)
+
+    local slots = 8
+    local slot = lp.UserId % slots
+    local preferred = {}
+    for i, e in ipairs(ranked) do
+        if ((i - 1) % slots) == slot then
+            table.insert(preferred, e)
         end
     end
-    return bestObj
+    if #preferred == 0 then
+        preferred = ranked
+    end
+
+    -- Among this account's slice, take nearest; tiny random among top 3
+    table.sort(preferred, function(a, b) return a.dist < b.dist end)
+    local pool = math.min(3, #preferred)
+    local pick = preferred[math.random(1, pool)]
+    return pick.obj
 end
 
 -- Mid-travel: only retarget if current coin is DEAD (taken).
@@ -878,7 +757,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.16-"
+title.Text = "mm2 coins farm | v2026.11.21-spread"
 title.TextColor3 = Color3.fromRGB(180, 160, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
@@ -1589,13 +1468,13 @@ task.spawn(function()
     FARM_MODE = "Surface"
     SP = 16
     COIN_DELAY = 0.5
-    COIN_MODE = "Closest"
-    COIN_MODE = "Closest"
+    COIN_MODE = "Spread"
+    COIN_MODE = "Spread"
     lastCollectTick = tick()
 
     if ready then
         rebuildCoinCache()
-        print("[mm2 coins farm] AutoFarm started: Surface | Speed 16 | CD 0.5 | Closest")
+        print("[mm2 coins farm] AutoFarm started: Surface | Speed 16 | CD 0.5 | Spread")
     else
         warn("[mm2 coins farm] AutoFarm enabled, but character was not ready yet; it will start when your character loads.")
     end
