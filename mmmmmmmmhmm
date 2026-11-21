@@ -241,7 +241,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 16
+local SP = 22
 local RG = 500
 local VS = {}
 local CL = 0
@@ -257,7 +257,7 @@ local NOCLIP = false
 local NORENDER = false
 local COIN_DELAY = 0.5
 local AUTO_HOP_PLAYERS = 8
-local AUTO_HOP_EVERY = 60
+local AUTO_HOP_EVERY = 40
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
 local moveToken = 0
