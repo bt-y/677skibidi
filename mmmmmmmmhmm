@@ -26,17 +26,38 @@ local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
 -- =========================================================
--- (LOADING SCREEN)
+-- (LOADING SCREEN HIDE - aggressive)
 -- =========================================================
--- Do not scan, disable, or destroy ScreenGuis here. Earlier versions
--- hid the entire PlayerGui, which also hid this script's own interface.
--- Only ask Roblox to dismiss its built-in loading screen.
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
 pcall(function()
     ReplicatedFirst:RemoveDefaultLoadingScreen()
 end)
 
--- Farm-only build: no dual-load, no transfer, no ESP
+task.spawn(function()
+    local function hideLoaders()
+        local ok, gui = pcall(function() return lp:FindFirstChild("PlayerGui") or pg end)
+        if not ok or not gui then return end
+        for _, g in ipairs(gui:GetChildren()) do
+            if g:IsA("ScreenGui") then
+                local n = string.lower(g.Name)
+                if g.Name == "mm2FarmLight" or g.Name == "mm2Farm" then
+                    g.Enabled = true
+                    g.DisplayOrder = 999999
+                    g.IgnoreGuiInset = true
+                elseif n:find("load") or n:find("intro") or n:find("transition")
+                    or n:find("fade") or n:find("splash") or n:find("loading") then
+                    pcall(function() g.Enabled = false end)
+                end
+            end
+        end
+    end
+    for _ = 1, 50 do
+        pcall(hideLoaders)
+        task.wait(0.2)
+    end
+end)
+
+-- Farm-only: no transfer | teleports to hidden place if not already there
 
 -- =========================================================
 -- (PLACE IDS)
@@ -45,6 +66,74 @@ local HIDDEN_ID = 80469437126309
 local PLACE_ID = game.PlaceId
 local isHidden = (game.PlaceId == HIDDEN_ID)
 local CURRENT_PLACE = game.PlaceId
+
+-- =========================================================
+-- (HIDDEN PLACE TELEPORT - small server)
+-- Runs once: if not on hidden place, hop to a low-player instance there
+-- =========================================================
+task.spawn(function()
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+    if game.PlaceId == HIDDEN_ID then
+        return
+    end
+
+    local httpRequest = (syn and syn.request)
+        or (http and http.request)
+        or http_request
+        or request
+    if not httpRequest then
+        -- fallback: plain teleport to place (any server)
+        pcall(function()
+            TeleportService:Teleport(HIDDEN_ID, lp)
+        end)
+        return
+    end
+
+    local function findSmallHidden()
+        local cursor = ""
+        for _ = 1, 8 do
+            local url = "https://games.roblox.com/v1/games/" .. tostring(HIDDEN_ID)
+                .. "/servers/Public?sortOrder=Asc&limit=100"
+            if cursor ~= "" then
+                url = url .. "&cursor=" .. HS:UrlEncode(cursor)
+            end
+            local ok, res = pcall(function()
+                return httpRequest({Url = url, Method = "GET"})
+            end)
+            if not ok or not res or not res.Body then break end
+            local ok2, data = pcall(function() return HS:JSONDecode(res.Body) end)
+            if not ok2 or type(data) ~= "table" or type(data.data) ~= "table" then break end
+            for _, server in ipairs(data.data) do
+                local playing = tonumber(server.playing)
+                local maxP = tonumber(server.maxPlayers) or 12
+                local id = server.id
+                if id and id ~= game.JobId and playing ~= nil and playing < 5 and playing < maxP then
+                    return id
+                end
+            end
+            if data.nextPageCursor and data.nextPageCursor ~= "" then
+                cursor = data.nextPageCursor
+            else
+                break
+            end
+            task.wait(0.1)
+        end
+        return nil
+    end
+
+    local job = findSmallHidden()
+    if job then
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(HIDDEN_ID, job, lp)
+        end)
+    else
+        pcall(function()
+            TeleportService:Teleport(HIDDEN_ID, lp)
+        end)
+    end
+end)
 
 -- =========================================================
 -- =========================================================
@@ -757,7 +846,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.21-spread"
+title.Text = "mm2 coins farm | v2026.11.21-hidden"
 title.TextColor3 = Color3.fromRGB(180, 160, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
