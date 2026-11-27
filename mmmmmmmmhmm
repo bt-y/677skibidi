@@ -1,6 +1,6 @@
 
 print("[mm2 coins farm] Loading...")
-print("[mm2 coins farm] Defaults: Surface | Speed 22 | Delay 0.5 | Spread | AutoFarm ON | Noclip ON | Hop if >8")
+print("[mm2 coins farm] Defaults: Surface | Speed 22 | Delay 0.5 | Spread | AutoFarm ON | Hop if >8")
 
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
@@ -330,7 +330,7 @@ local infJump = false
 local jumpPower = 50
 local coinMode = "Spread"
 local farmMode = "Surface"  -- "Surface" | "Flat" | "FastUnder"
-local noclipOn = true
+local noclipOn = false
 local noRender = false
 local coinDelay = 0.5
 local autoHopPlayers = 8
@@ -338,7 +338,7 @@ local autoHopEvery = 60
 local deadServerSec = 90
 local lastHopAttempt = 0
 local moveToken = 0
-local playerNoclip = true
+local playerNoclip = false
 local realCoins = 0
 local realMax = 40
 
@@ -686,174 +686,44 @@ local function findBetterCoin(root, current, remainingDist)
     return spreadPick(list)
 end
 
--- Surface move: STRAIGHT horizontal path through walls (no climbing on top of map)
--- Fixed Y from start of path; raycast may only adjust slightly downward, never upward onto walls.
--- Walk anim via Humanoid:Move + WalkSpeed.
+-- Surface move: simple CFrame path above coin (no walk-anim / no forced noclip)
 -- returns: reached (bool), newTarget (coin or nil)
 local function moveSurface(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
-    local char = root.Parent
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then return false, nil end
-
-    root.Anchored = false
-    hum.PlatformStand = false
-    hum.Sit = false
-    hum.AutoRotate = false -- we face manually toward the coin
-    applyNoclip(true)
-
-    speed = math.clamp(tonumber(speed) or walkSpeed or 22, 8, 28)
-    local oldWS = hum.WalkSpeed
-    if oldWS < 1 then oldWS = 16 end
-    hum.WalkSpeed = speed
-
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {char}
-    rayParams.IgnoreWater = true
-
-    -- Lock path height at the START so walls never lift us onto the roof
-    local pathY = root.Position.Y
-    do
-        local origin = root.Position + Vector3.new(0, 5, 0)
-        local hit = workspace:Raycast(origin, Vector3.new(0, -40, 0), rayParams)
-        if hit then
-            local hip = 3.0
-            pcall(function()
-                if hum.HipHeight and hum.HipHeight > 0 then
-                    hip = hum.HipHeight + 1.4
-                end
-            end)
-            pathY = hit.Position.Y + hip
-        end
-    end
-
-    local function flatDist(a, b)
-        local dx, dz = a.X - b.X, a.Z - b.Z
-        return math.sqrt(dx * dx + dz * dz)
-    end
-
-    local function coinDest()
-        -- Same fixed Y the whole way: pure straight line in XZ
-        local p = target.Position
-        return Vector3.new(p.X, pathY, p.Z)
-    end
-
-    local function holdPathHeight()
-        local p = root.Position
-        local v = root.AssemblyLinearVelocity
-        -- kill vertical motion (no float up / fall down)
-        root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
-        if math.abs(p.Y - pathY) > 0.02 then
-            root.CFrame = CFrame.new(p.X, pathY, p.Z) * (root.CFrame - root.CFrame.Position)
-        end
-        -- void rescue: snap back to path height, never "find higher floor"
-        if p.Y < pathY - 8 or p.Y < -50 then
-            root.CFrame = CFrame.new(p.X, pathY, p.Z) * (root.CFrame - root.CFrame.Position)
-            root.AssemblyLinearVelocity = Vector3.zero
-        end
-    end
-
-    local function faceAndWalk(dest)
-        local pos = root.Position
-        local look = Vector3.new(dest.X, pathY, dest.Z)
-        local delta = look - Vector3.new(pos.X, pathY, pos.Z)
-        local mag = delta.Magnitude
-        if mag > 0.05 then
-            local cf = CFrame.lookAt(Vector3.new(pos.X, pathY, pos.Z), look)
-            root.CFrame = cf
-            -- World-space move so walk anim plays while we force straight XZ path
-            local dir = delta.Unit
-            pcall(function()
-                hum:Move(dir, false)
-            end)
-        else
-            pcall(function() hum:Move(Vector3.zero, false) end)
-        end
-    end
-
-    holdPathHeight()
-    local dest = coinDest()
-    if flatDist(root.Position, dest) < 3.0 then
-        faceAndWalk(dest)
-        holdPathHeight()
-        pcall(function() hum:Move(Vector3.zero, false) end)
-        hum.WalkSpeed = oldWS
-        hum.AutoRotate = true
+    speed = math.clamp(tonumber(speed) or walkSpeed or 16, 5, 28)
+    local dest = target.Position + Vector3.new(0, 2.5, 0)
+    local startPos = root.Position
+    local dist = (dest - startPos).Magnitude
+    if dist < 3.5 then
+        root.CFrame = CFrame.new(dest)
         return true, nil
     end
-
+    local duration = math.clamp(dist / speed, 0.08, 4)
+    local t0 = tick()
     local myToken = moveToken
-    local deadline = tick() + math.clamp(flatDist(root.Position, dest) / math.max(speed, 1) + 2.5, 1.5, 14)
-
-    while root and root.Parent and hum and hum.Parent do
-        if myToken ~= moveToken then
-            pcall(function() hum:Move(Vector3.zero, false) end)
-            hum.WalkSpeed = oldWS
-            hum.AutoRotate = true
-            return false, nil
-        end
+    while root and root.Parent do
+        if myToken ~= moveToken then return false, nil end
         if not coinStillValid(target) then
             visitedCoins[target] = true
-            pcall(function() hum:Move(Vector3.zero, false) end)
-            hum.WalkSpeed = oldWS
-            hum.AutoRotate = true
             local better = findBetterCoin(root, nil, math.huge)
             return false, better
         end
-
-        dest = coinDest()
-        local remaining = flatDist(root.Position, dest)
-
+        dest = target.Position + Vector3.new(0, 2.5, 0)
+        local remaining = (dest - root.Position).Magnitude
         local better = findBetterCoin(root, target, remaining)
         if better then
-            pcall(function() hum:Move(Vector3.zero, false) end)
-            hum.WalkSpeed = oldWS
-            hum.AutoRotate = true
             return false, better
         end
-
-        applyNoclip(true)
-        holdPathHeight()
-        hum.PlatformStand = false
-        hum.Sit = false
-        hum.WalkSpeed = speed
-        faceAndWalk(dest)
-
-        -- Also nudge horizontally at walk speed so path stays straight even if Move is blocked
-        if remaining > 0.5 then
-            local pos = root.Position
-            local look = Vector3.new(dest.X, pathY, dest.Z)
-            local dir = (look - Vector3.new(pos.X, pathY, pos.Z))
-            if dir.Magnitude > 0.01 then
-                dir = dir.Unit
-                local step = math.min(speed * 0.05, remaining)
-                local np = Vector3.new(pos.X, pathY, pos.Z) + dir * step
-                local face = CFrame.lookAt(np, look)
-                root.CFrame = face
-            end
-        end
-
-        if remaining < 3.0 then
-            holdPathHeight()
-            pcall(function() hum:Move(Vector3.zero, false) end)
-            hum.WalkSpeed = oldWS
-            hum.AutoRotate = true
-            return true, nil
-        end
-        if tick() > deadline then
-            holdPathHeight()
-            pcall(function() hum:Move(Vector3.zero, false) end)
-            hum.WalkSpeed = oldWS
-            hum.AutoRotate = true
-            return remaining < 14, nil
-        end
-        task.wait(0.05)
-    end
-    if hum then
-        pcall(function() hum:Move(Vector3.zero, false) end)
-        hum.WalkSpeed = oldWS
-        hum.AutoRotate = true
+        local alpha = math.min((tick() - t0) / duration, 1)
+        local s = alpha * alpha * (3 - 2 * alpha)
+        local pos = startPos:Lerp(dest, s)
+        -- refresh dest mid-path for moving accuracy
+        dest = target.Position + Vector3.new(0, 2.5, 0)
+        pos = startPos:Lerp(dest, s)
+        root.CFrame = CFrame.new(pos)
+        root.AssemblyLinearVelocity = Vector3.zero
+        if alpha >= 1 then return true, nil end
+        task.wait()
     end
     return false, nil
 end
@@ -975,7 +845,7 @@ local function goToCoin(root, hum, coin, speed)
                 hum.PlatformStand = false
                 hum.Sit = false
             end
-            applyNoclip(true)
+            if noclipOn then applyNoclip(true) end
             reached, newT = moveSurface(root, current, speed)
         end
         if newT and newT ~= current then
@@ -986,15 +856,7 @@ local function goToCoin(root, hum, coin, speed)
                 if farmMode == "Flat" then
                     root.CFrame = CFrame.new(current.Position) * FLAT
                 else
-                    -- Stay slightly under coin, face it, natural touch
-                    local under = current.Position + Vector3.new(0, -1.0, 0)
-                    local look = Vector3.new(current.Position.X, root.Position.Y, current.Position.Z)
-                    if (look - root.Position).Magnitude > 0.05 then
-                        local cf = CFrame.lookAt(root.Position, look)
-                        root.CFrame = CFrame.new(under.X, root.Position.Y, under.Z) * (cf - cf.Position)
-                    else
-                        root.CFrame = CFrame.new(under.X, root.Position.Y, under.Z) * (root.CFrame - root.CFrame.Position)
-                    end
+                    root.CFrame = CFrame.new(current.Position + Vector3.new(0, 1.5, 0))
                 end
                 touchCoin(current, root)
                 touchCoinFast(current, root)
@@ -1069,7 +931,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.27-straight"
+title.Text = "mm2 coins farm | v2026.11.27-classic"
 title.TextColor3 = Color3.fromRGB(180, 160, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
@@ -1544,7 +1406,7 @@ local function showModes()
 
     local modes = {
         {"FlatUnder", "Flat on coin (lying down, not underground)"},
-        {"Surface", "Natural walk + face coin"},
+        {"Surface", "Move above coin"},
         {"Tween", "Smooth tween to coin"},
         {"TPTouch", "Fast teleport + touch"},
         {"Random", "Random coin + surface"},
@@ -1716,16 +1578,7 @@ end)
 
 -- Noclip only when toggle is ON (not forced by AutoFarm)
 RS.Stepped:Connect(function()
-    -- Keep noclip applied every frame while farming / toggles on (stops wall sticks)
-    if noclipOn or playerNoclip or autoFarm then
-        applyNoclip(true)
-    end
-end)
-
--- Re-apply noclip when character respawns
-lp.CharacterAdded:Connect(function(ch)
-    task.wait(0.3)
-    if noclipOn or playerNoclip or autoFarm then
+    if noclipOn or playerNoclip or (autoFarm and farmMode == "Flat") then
         applyNoclip(true)
     end
 end)
@@ -1790,10 +1643,7 @@ task.spawn(function()
     walkSpeed = 22
     coinDelay = 0.5
     coinMode = "Spread"
-    noclipOn = true
-    playerNoclip = true
     lastCollectTick = tick()
-    applyNoclip(true)
 
     if ready then
         rebuildCoinCache()
