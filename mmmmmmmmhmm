@@ -241,7 +241,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 22
+local SP = 16
 local RG = 500
 local VS = {}
 local CL = 0
@@ -257,7 +257,7 @@ local NOCLIP = false
 local NORENDER = false
 local COIN_DELAY = 0.5
 local AUTO_HOP_PLAYERS = 8
-local AUTO_HOP_EVERY = 40
+local AUTO_HOP_EVERY = 60
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
 local moveToken = 0
@@ -609,40 +609,97 @@ local function findBetterCoin(root, current, remainingDist)
     return spreadPick(list)
 end
 
--- Surface move with mid-travel cancel + switch
+-- Surface move: real Humanoid walk (walk anim) + face coin + slightly under coin
 -- returns: reached (bool), newTarget (coin or nil)
 local function moveSurface(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
-    speed = math.clamp(speed or SP or 16, 5, 20)
-    local dest = target.Position + Vector3.new(0, 2.5, 0)
-    local startPos = root.Position
-    local dist = (dest - startPos).Magnitude
-    if dist < 3.5 then
-        root.CFrame = CFrame.new(dest)
+    local hum = root.Parent:FindFirstChildOfClass("Humanoid")
+    if not hum then return false, nil end
+
+    root.Anchored = false
+    hum.PlatformStand = false
+    hum.Sit = false
+    hum.AutoRotate = true
+    setNoclip(NOCLIP)
+
+    speed = math.clamp(tonumber(speed) or SP or 16, 8, 22)
+    local oldWS = hum.WalkSpeed
+    if oldWS < 1 then oldWS = 16 end
+    hum.WalkSpeed = speed
+
+    -- Slightly under coin center (not deep underground)
+    local function coinDest()
+        return target.Position + Vector3.new(0, -1.15, 0)
+    end
+
+    local function flatDist(a, b)
+        local dx, dz = a.X - b.X, a.Z - b.Z
+        return math.sqrt(dx * dx + dz * dz)
+    end
+
+    local function facePoint(pos)
+        local look = Vector3.new(pos.X, root.Position.Y, pos.Z)
+        if (look - root.Position).Magnitude < 0.05 then return end
+        local cf = CFrame.lookAt(root.Position, look)
+        root.CFrame = CFrame.new(root.Position) * (cf - cf.Position)
+    end
+
+    local dest = coinDest()
+    if flatDist(root.Position, dest) < 3.0 then
+        facePoint(dest)
+        hum.WalkSpeed = oldWS
         return true, nil
     end
-    local duration = math.clamp(dist / speed, 0.08, 4)
-    local t0 = tick()
+
     local myToken = moveToken
-    while root and root.Parent do
-        if myToken ~= moveToken then return false, nil end
+    local deadline = tick() + math.clamp(flatDist(root.Position, dest) / math.max(speed, 1) + 2.5, 1.5, 14)
+
+    facePoint(dest)
+    pcall(function() hum:MoveTo(dest) end)
+
+    while root and root.Parent and hum and hum.Parent do
+        if myToken ~= moveToken then
+            pcall(function() hum:MoveTo(root.Position) end)
+            hum.WalkSpeed = oldWS
+            return false, nil
+        end
         if not coinStillValid(target) then
             VS[target] = true
+            pcall(function() hum:MoveTo(root.Position) end)
+            hum.WalkSpeed = oldWS
             local better = findBetterCoin(root, nil, math.huge)
             return false, better
         end
-        local remaining = (dest - root.Position).Magnitude
+
+        dest = coinDest()
+        local remaining = flatDist(root.Position, dest)
+
         local better = findBetterCoin(root, target, remaining)
         if better then
+            pcall(function() hum:MoveTo(root.Position) end)
+            hum.WalkSpeed = oldWS
             return false, better
         end
-        local alpha = math.min((tick() - t0) / duration, 1)
-        local s = alpha * alpha * (3 - 2 * alpha)
-        root.CFrame = CFrame.new(startPos:Lerp(dest, s))
-        root.AssemblyLinearVelocity = Vector3.zero
-        if alpha >= 1 then return true, nil end
-        task.wait()
+
+        -- Keep body facing the coin while pathing
+        facePoint(dest)
+        pcall(function()
+            hum.WalkSpeed = speed
+            hum:MoveTo(dest)
+        end)
+
+        if remaining < 3.0 then
+            hum.WalkSpeed = oldWS
+            return true, nil
+        end
+        if tick() > deadline then
+            -- timed out near-ish: still try collect
+            hum.WalkSpeed = oldWS
+            return remaining < 12, nil
+        end
+        task.wait(0.06)
     end
+    if hum then hum.WalkSpeed = oldWS end
     return false, nil
 end
 
@@ -759,7 +816,11 @@ local function goToCoin(root, hum, coin, speed)
             setNoclip(true)
             reached, newT = moveFlat(root, current, speed)
         else
-            if hum then hum.AutoRotate = true end
+            if hum then
+                hum.AutoRotate = true
+                hum.PlatformStand = false
+                hum.Sit = false
+            end
             setNoclip(NOCLIP)
             reached, newT = moveSurface(root, current, speed)
         end
@@ -771,7 +832,15 @@ local function goToCoin(root, hum, coin, speed)
                 if FARM_MODE == "Flat" then
                     root.CFrame = CFrame.new(current.Position) * FLAT
                 else
-                    root.CFrame = CFrame.new(current.Position + Vector3.new(0, 1.5, 0))
+                    -- Stay slightly under coin, face it, natural touch
+                    local under = current.Position + Vector3.new(0, -1.0, 0)
+                    local look = Vector3.new(current.Position.X, root.Position.Y, current.Position.Z)
+                    if (look - root.Position).Magnitude > 0.05 then
+                        local cf = CFrame.lookAt(root.Position, look)
+                        root.CFrame = CFrame.new(under.X, root.Position.Y, under.Z) * (cf - cf.Position)
+                    else
+                        root.CFrame = CFrame.new(under.X, root.Position.Y, under.Z) * (root.CFrame - root.CFrame.Position)
+                    end
                 end
                 touchCoin(current, root)
                 touchCoinFast(current, root)
@@ -846,7 +915,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.21-hidden"
+title.Text = "mm2 coins farm | v2026.11.27-walk"
 title.TextColor3 = Color3.fromRGB(180, 160, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
@@ -1321,7 +1390,7 @@ local function showModes()
 
     local modes = {
         {"FlatUnder", "Flat on coin (lying down, not underground)"},
-        {"Surface", "Walk above coin"},
+        {"Surface", "Natural walk + face coin"},
         {"Tween", "Smooth tween to coin"},
         {"TPTouch", "Fast teleport + touch"},
         {"Random", "Random coin + surface"},
