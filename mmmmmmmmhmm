@@ -241,7 +241,7 @@ end
 -- (CORE VARIABLES)
 -- =========================================================
 local AF = true
-local SP = 16
+local SP = 22
 local RG = 500
 local VS = {}
 local CL = 0
@@ -253,7 +253,7 @@ local IJ = false
 local JP = 50
 local COIN_MODE = "Spread"
 local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
-local NOCLIP = false
+local NOCLIP = true
 local NORENDER = false
 local COIN_DELAY = 0.5
 local AUTO_HOP_PLAYERS = 8
