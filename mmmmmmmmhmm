@@ -256,12 +256,12 @@ local FARM_MODE = "Surface"  -- "Surface" | "Flat" | "FastUnder"
 local NOCLIP = true
 local NORENDER = false
 local COIN_DELAY = 0.5
-local AUTO_HOP_PLAYERS = 8
-local AUTO_HOP_EVERY = 60
+local AUTO_HOP_PLAYERS = 10
+local AUTO_HOP_EVERY = 240
 local DEAD_SERVER_SEC = 90
 local lastHopAttempt = 0
 local moveToken = 0
-local PLAYER_NOCLIP = false
+local PLAYER_NOCLIP = true
 local realCoins = 0
 local realMax = 40
 
