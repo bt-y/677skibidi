@@ -26,7 +26,7 @@ local lp = P.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
 -- =========================================================
--- (LOADING SCREEN HIDE - aggressive)
+-- (LOADING SCREEN HIDE - force full hide)
 -- =========================================================
 local ReplicatedFirst = game:GetService("ReplicatedFirst")
 pcall(function()
@@ -34,67 +34,103 @@ pcall(function()
 end)
 
 task.spawn(function()
-    local function nukeLoadingGui(g)
-        if not g then return end
+    local keepName = {
+        mm2FarmLight = true,
+        mm2Farm = true,
+        Auth = true,
+    }
+
+    local function isProbablyLoading(g)
+        if not g or not g:IsA("ScreenGui") then return false end
+        if keepName[g.Name] then return false end
+        local n = string.lower(g.Name)
+        if n:find("load") or n:find("intro") or n:find("transition")
+            or n:find("fade") or n:find("splash") or n:find("cover")
+            or n:find("curtain") or n:find("black") or n:find("waiting")
+            or n:find("connect") or n:find("teleport") then
+            return true
+        end
+        -- Fullscreen almost-opaque frame = loading overlay
+        for _, d in ipairs(g:GetDescendants()) do
+            if d:IsA("Frame") or d:IsA("ImageLabel") then
+                local ok, size = pcall(function() return d.AbsoluteSize end)
+                if ok and size and size.X > 400 and size.Y > 300 then
+                    local bgT = 1
+                    pcall(function() bgT = d.BackgroundTransparency end)
+                    local imgT = 1
+                    pcall(function()
+                        if d:IsA("ImageLabel") then imgT = d.ImageTransparency end
+                    end)
+                    if bgT < 0.35 or imgT < 0.35 then
+                        local dn = string.lower(d.Name)
+                        if dn:find("load") or dn:find("fade") or dn:find("splash")
+                            or dn:find("cover") or dn:find("bg") or dn:find("background")
+                            or dn == "frame" or dn == "main" then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        return false
+    end
+
+    local function stripGui(g)
         pcall(function() g.Enabled = false end)
         for _, d in ipairs(g:GetDescendants()) do
             pcall(function()
                 if d:IsA("GuiObject") then
                     d.Visible = false
-                    if d:IsA("Frame") or d:IsA("ImageLabel") or d:IsA("TextLabel") then
-                        d.BackgroundTransparency = 1
-                        if d:IsA("ImageLabel") or d:IsA("ImageButton") then
-                            d.ImageTransparency = 1
-                        end
-                        if d:IsA("TextLabel") or d:IsA("TextButton") then
-                            d.TextTransparency = 1
-                        end
+                    d.BackgroundTransparency = 1
+                    if d:IsA("ImageLabel") or d:IsA("ImageButton") then
+                        d.ImageTransparency = 1
+                    end
+                    if d:IsA("TextLabel") or d:IsA("TextButton") then
+                        d.TextTransparency = 1
+                        d.TextStrokeTransparency = 1
                     end
                 end
             end)
         end
-        pcall(function() g:Destroy() end)
     end
 
-    local function hideLoaders()
+    -- First 12s: aggressively kill loading overlays every frame-ish
+    local tEnd = tick() + 12
+    while tick() < tEnd do
+        pcall(function() ReplicatedFirst:RemoveDefaultLoadingScreen() end)
         local gui = lp:FindFirstChild("PlayerGui") or pg
-        if not gui then return end
-        for _, g in ipairs(gui:GetChildren()) do
-            if g:IsA("ScreenGui") then
-                local n = string.lower(g.Name)
-                if g.Name == "mm2FarmLight" or g.Name == "mm2Farm" then
-                    g.Enabled = true
-                    g.DisplayOrder = 999999
-                    g.IgnoreGuiInset = true
-                    g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                elseif n:find("load") or n:find("intro") or n:find("transition")
-                    or n:find("fade") or n:find("splash") or n:find("loading")
-                    or n:find("mainmenu") or n:find("menu") and n:find("load")
-                    or n:find("black") or n:find("cover") or n:find("curtain") then
-                    nukeLoadingGui(g)
+        if gui then
+            for _, g in ipairs(gui:GetChildren()) do
+                if g:IsA("ScreenGui") then
+                    if keepName[g.Name] then
+                        g.Enabled = true
+                        g.DisplayOrder = 999999
+                        g.IgnoreGuiInset = true
+                    elseif isProbablyLoading(g) then
+                        stripGui(g)
+                        pcall(function() g:Destroy() end)
+                    end
                 end
             end
         end
-        -- Also hide common fullscreen black frames that are not named "load"
-        for _, g in ipairs(gui:GetDescendants()) do
-            if g:IsA("Frame") or g:IsA("ImageLabel") then
-                local n = string.lower(g.Name)
-                if n:find("load") or n:find("fade") or n:find("splash") or n:find("transition") then
-                    pcall(function()
-                        g.Visible = false
-                        g.BackgroundTransparency = 1
-                        if g:IsA("ImageLabel") then g.ImageTransparency = 1 end
-                    end)
-                end
-            end
-        end
-        pcall(function()
-            game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
-        end)
+        task.wait(0.1)
     end
-    for _ = 1, 60 do
-        pcall(hideLoaders)
-        task.wait(0.15)
+
+    -- Extra 8s: only strip remaining load-named guis (don't touch game HUD forever)
+    local tEnd2 = tick() + 8
+    while tick() < tEnd2 do
+        local gui = lp:FindFirstChild("PlayerGui") or pg
+        if gui then
+            for _, g in ipairs(gui:GetChildren()) do
+                if g:IsA("ScreenGui") and not keepName[g.Name] then
+                    local n = string.lower(g.Name)
+                    if n:find("load") or n:find("intro") or n:find("fade") or n:find("splash") then
+                        stripGui(g)
+                    end
+                end
+            end
+        end
+        task.wait(0.25)
     end
 end)
 
@@ -650,11 +686,12 @@ local function findBetterCoin(root, current, remainingDist)
     return spreadPick(list)
 end
 
--- Surface move: real Humanoid walk (walk anim) + face coin + slightly under coin
+-- Surface move: real walk anim + face coin + floor lock (no void fall through walls)
 -- returns: reached (bool), newTarget (coin or nil)
 local function moveSurface(root, target, speed)
     if not root or not root.Parent or not target then return false, nil end
-    local hum = root.Parent:FindFirstChildOfClass("Humanoid")
+    local char = root.Parent
+    local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return false, nil end
 
     root.Anchored = false
@@ -668,9 +705,58 @@ local function moveSurface(root, target, speed)
     if oldWS < 1 then oldWS = 16 end
     hum.WalkSpeed = speed
 
-    -- Slightly under coin center (not deep underground)
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {char}
+    rayParams.IgnoreWater = true
+
+    local lastSafeY = root.Position.Y
+    local hip = 3.1
+    pcall(function()
+        if hum.HipHeight and hum.HipHeight > 0 then
+            hip = hum.HipHeight + 1.5
+        end
+    end)
+
+    local function sampleFloorY(at)
+        -- try several heights so we still find floor while inside a wall volume
+        for _, up in ipairs({8, 20, 40, 60}) do
+            local origin = Vector3.new(at.X, at.Y + up, at.Z)
+            local hit = workspace:Raycast(origin, Vector3.new(0, -120, 0), rayParams)
+            if hit and hit.Position then
+                local y = hit.Position.Y + hip
+                -- ignore absurd sky/void hits
+                if y > -200 and y < 2000 then
+                    return y
+                end
+            end
+        end
+        return nil
+    end
+
+    local function lockToFloor()
+        local y = sampleFloorY(root.Position)
+        if y then
+            lastSafeY = y
+        else
+            y = lastSafeY
+        end
+        -- kill downward velocity so noclip doesn't fling into void
+        local v = root.AssemblyLinearVelocity
+        if v.Y < 0 then
+            root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+        end
+        local p = root.Position
+        if math.abs(p.Y - y) > 0.05 then
+            root.CFrame = CFrame.new(p.X, y, p.Z) * (root.CFrame - root.CFrame.Position)
+        end
+    end
+
+    -- Destination: same floor height path toward coin XZ (slightly under coin XZ center)
     local function coinDest()
-        return target.Position + Vector3.new(0, -1.15, 0)
+        local base = target.Position
+        local y = sampleFloorY(base) or sampleFloorY(root.Position) or lastSafeY
+        return Vector3.new(base.X, y, base.Z)
     end
 
     local function flatDist(a, b)
@@ -685,9 +771,11 @@ local function moveSurface(root, target, speed)
         root.CFrame = CFrame.new(root.Position) * (cf - cf.Position)
     end
 
+    lockToFloor()
     local dest = coinDest()
     if flatDist(root.Position, dest) < 3.0 then
         facePoint(dest)
+        lockToFloor()
         hum.WalkSpeed = oldWS
         return true, nil
     end
@@ -722,23 +810,34 @@ local function moveSurface(root, target, speed)
             return false, better
         end
 
-        -- Keep body facing the coin while pathing
+        -- Floor lock + face + walk (animation keeps playing via MoveTo / WalkSpeed)
+        lockToFloor()
         facePoint(dest)
         pcall(function()
+            hum.PlatformStand = false
+            hum.Sit = false
             hum.WalkSpeed = speed
             hum:MoveTo(dest)
         end)
 
+        -- Hard void rescue
+        if root.Position.Y < lastSafeY - 25 or root.Position.Y < -100 then
+            root.CFrame = CFrame.new(root.Position.X, lastSafeY, root.Position.Z)
+                * (root.CFrame - root.CFrame.Position)
+            root.AssemblyLinearVelocity = Vector3.zero
+        end
+
         if remaining < 3.0 then
+            lockToFloor()
             hum.WalkSpeed = oldWS
             return true, nil
         end
         if tick() > deadline then
-            -- timed out near-ish: still try collect
+            lockToFloor()
             hum.WalkSpeed = oldWS
             return remaining < 12, nil
         end
-        task.wait(0.06)
+        task.wait(0.05)
     end
     if hum then hum.WalkSpeed = oldWS end
     return false, nil
@@ -956,7 +1055,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -90, 0, 34)
 title.Position = UDim2.new(0, 12, 0, 6)
 title.BackgroundTransparency = 1
-title.Text = "mm2 coins farm | v2026.11.27-walk-noclip"
+title.Text = "mm2 coins farm | v2026.11.27-floorlock"
 title.TextColor3 = Color3.fromRGB(180, 160, 255)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 16
